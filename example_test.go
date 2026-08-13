@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MohammadmahdiAhmadi/transform"
+	"github.com/goxang/transform"
 )
 
 func Example() {

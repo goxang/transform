@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MohammadmahdiAhmadi/transform"
+	"github.com/goxang/transform"
 )
 
 // ========== Test types ==========

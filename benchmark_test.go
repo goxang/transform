@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MohammadmahdiAhmadi/transform"
+	"github.com/goxang/transform"
 )
 
 // ========== Benchmark types ==========
@@ -471,5 +471,197 @@ func naiveReflectTransform(val reflect.Value, fns map[string]func(string) string
 				naiveReflectTransform(iter.Value(), fns)
 			}
 		}
+	}
+}
+
+// ========== Package vs hand-written loop (same work) ==========
+//
+// The library's worst case: a small struct, where the fixed reflection
+// overhead is largest relative to the actual transform work. The manual
+// baseline applies the exact same functions to the exact same fields, so
+// the gap is purely the framework. (Wrapping either in a method changes
+// nothing — the call inlines.)
+
+type benchNorm struct {
+	Email string `json:"email" transform:"normalize"`
+	Name  string `json:"name" transform:"trim"`
+}
+
+func normalizeBench(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+func trimBench(s string) string      { return strings.TrimSpace(s) }
+
+// benchSink keeps results alive so the compiler cannot eliminate the field
+// writes in either benchmark.
+var benchSink string
+
+func BenchmarkTransform_PackageNorm(b *testing.B) {
+	tx := transform.New()
+	tx.RegisterString("normalize", normalizeBench)
+	tx.RegisterString("trim", trimBench)
+	// Warm the cache: this measures steady state, not first-call cost.
+	_ = tx.Transform(&benchNorm{Email: "  alice@example.com ", Name: " bob "})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		u := benchNorm{Email: "  alice@example.com ", Name: " bob "}
+		_ = tx.Transform(&u)
+		benchSink = u.Email
+	}
+}
+
+func BenchmarkTransform_ManualNorm(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		u := benchNorm{Email: "  alice@example.com ", Name: " bob "}
+		u.Email = normalizeBench(u.Email)
+		u.Name = trimBench(u.Name)
+		benchSink = u.Email
+	}
+}
+
+// Manual version of the existing 50-field package benchmark: the same
+// 20 transforms applied by hand. This is the other end of the spectrum,
+// where the hand-written loop is long and the library's fixed overhead
+// matters less.
+func BenchmarkTransform_Manual50Field(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := bench50Field{
+			P01: "a", P02: "b", P03: "c", P04: "d",
+			P05: "e", P06: "f", P07: "g", P08: "h",
+			P09: "i", P10: "j", P11: "k", P12: "l",
+			P13: "m", P14: "n", P15: "o", P16: "p",
+			P17: "q", P18: "r", P19: "s", P20: "t",
+		}
+		v.P01 = strings.ToUpper(v.P01)
+		v.P02 = benchMaskBench(v.P02)
+		v.P03 = strings.ToUpper(v.P03)
+		v.P04 = benchMaskBench(v.P04)
+		v.P05 = strings.ToUpper(v.P05)
+		v.P06 = benchMaskBench(v.P06)
+		v.P07 = strings.ToUpper(v.P07)
+		v.P08 = benchMaskBench(v.P08)
+		v.P09 = strings.ToUpper(v.P09)
+		v.P10 = benchMaskBench(v.P10)
+		v.P11 = strings.ToUpper(v.P11)
+		v.P12 = benchMaskBench(v.P12)
+		v.P13 = strings.ToUpper(v.P13)
+		v.P14 = benchMaskBench(v.P14)
+		v.P15 = strings.ToUpper(v.P15)
+		v.P16 = benchMaskBench(v.P16)
+		v.P17 = strings.ToUpper(v.P17)
+		v.P18 = benchMaskBench(v.P18)
+		v.P19 = strings.ToUpper(v.P19)
+		v.P20 = benchMaskBench(v.P20)
+		benchSink = v.P01
+	}
+}
+
+func benchMaskBench(s string) string {
+	if len(s) <= 4 {
+		return ""
+	}
+	return s[:2] + "****" + s[len(s)-2:]
+}
+
+// ========== Realistic workloads (framework overhead ≈ noise) ==========
+//
+// The gap above comes from measuring trivial transforms on tiny strings:
+// the fixed framework cost dominates. In realistic use — cleaning
+// user-supplied text — the transform functions themselves cost
+// hundreds of nanoseconds, and the framework adds only a small fraction.
+
+func emailBench(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// collapseBench normalizes every whitespace run to a single space.
+func collapseBench(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// slugBench lowercases and replaces spaces with dashes.
+func slugBench(s string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), " ", "-")
+}
+
+type benchReal struct {
+	Email string `transform:"email"`
+	Bio   string `transform:"collapse"`
+	Title string `transform:"slug"`
+}
+
+var (
+	realEmail = "  Alice.Smith+Spam@Example.COM "
+	realBio   = "I'm a backend engineer who   loves Go, tea,   and long walks. " +
+		"I write about   performance and  distributed systems,  and I think " +
+		"small tools   with honest  documentation  are the best kind of  software."
+	realTitle = "  My Go   Performance Notes "
+)
+
+func BenchmarkTransform_PackageReal(b *testing.B) {
+	tx := transform.New()
+	tx.RegisterString("email", emailBench)
+	tx.RegisterString("collapse", collapseBench)
+	tx.RegisterString("slug", slugBench)
+	_ = tx.Transform(&benchReal{Email: realEmail, Bio: realBio, Title: realTitle})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		u := benchReal{Email: realEmail, Bio: realBio, Title: realTitle}
+		_ = tx.Transform(&u)
+		benchSink = u.Email
+	}
+}
+
+func BenchmarkTransform_ManualReal(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		u := benchReal{Email: realEmail, Bio: realBio, Title: realTitle}
+		u.Email = emailBench(u.Email)
+		u.Bio = collapseBench(u.Bio)
+		u.Title = slugBench(u.Title)
+		benchSink = u.Email
+	}
+}
+
+// Large text: the same simple transforms on big inputs. String work is
+// linear in input size, the framework cost is fixed, so the gap shrinks
+// further.
+var largeText = strings.Repeat("the quick brown fox jumps over the lazy dog  ", 200)
+
+type benchLarge struct {
+	A string `transform:"upper"`
+	B string `transform:"trim"`
+}
+
+func BenchmarkTransform_PackageLarge(b *testing.B) {
+	tx := transform.New()
+	tx.RegisterString("upper", strings.ToUpper)
+	tx.RegisterString("trim", strings.TrimSpace)
+	_ = tx.Transform(&benchLarge{A: largeText, B: largeText})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		u := benchLarge{A: largeText, B: largeText}
+		_ = tx.Transform(&u)
+		benchSink = u.A
+	}
+}
+
+func BenchmarkTransform_ManualLarge(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		u := benchLarge{A: largeText, B: largeText}
+		u.A = strings.ToUpper(u.A)
+		u.B = strings.TrimSpace(u.B)
+		benchSink = u.A
 	}
 }

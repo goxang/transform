@@ -1,8 +1,8 @@
 # transform
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/MohammadmahdiAhmadi/transform.svg)](https://pkg.go.dev/github.com/MohammadmahdiAhmadi/transform)
-[![CI](https://github.com/MohammadmahdiAhmadi/transform/actions/workflows/ci.yml/badge.svg)](https://github.com/MohammadmahdiAhmadi/transform/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-84.8%25-brightgreen)](https://github.com/MohammadmahdiAhmadi/transform/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/goxang/transform.svg)](https://pkg.go.dev/github.com/goxang/transform)
+[![CI](https://github.com/goxang/transform/actions/workflows/ci.yml/badge.svg)](https://github.com/goxang/transform/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-84.8%25-brightgreen)](https://github.com/goxang/transform/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Use struct tags to define how fields should change. One call applies your
@@ -29,7 +29,7 @@ logging, normalizing values at API boundaries.
 ## Install
 
 ```bash
-go get github.com/MohammadmahdiAhmadi/transform
+go get github.com/goxang/transform
 ```
 
 Go 1.19 or newer. No dependencies.
@@ -162,9 +162,24 @@ Other shapes:
 | map of 4 structs | 1297 | 20 |
 | concurrent, warm | 43 | 3 |
 
-If you always transform the same known struct in a hot loop, a
-hand-written loop will be faster. This library gives you less code and
-one place to define the rules; it does not promise reflection-free speed.
+### vs a hand-written loop
+
+Reflection adds a fixed cost of about 80ns per call, no matter how much
+work the transforms do. That cost only shows up when the transforms are
+near-free; on real workloads it disappears into the noise:
+
+| scenario | transform | hand-written | gap |
+|---|---:|---:|---:|
+| 2 fields, trivial transforms (worst case) | 82ns | 15ns | 5.5× |
+| 3 fields, cleaning user text | 1.03µs | 0.94µs | 1.1× |
+| 2 fields, 9 KB strings | 19.1µs | 19.2µs | none measurable |
+| 50 fields, 20 transformed | 660ns | 199ns | 3.3× |
+
+So the honest picture: sanitizing real user input costs about 100ns of
+framework overhead per call — a rounding error next to the work itself.
+The tags only become the expensive part when the transforms are one-liners
+on tiny strings inside a hot loop. Write the loop there; everywhere else,
+declaring the rules next to the data is cheaper to maintain than the loop.
 
 ```bash
 go test -bench=. -benchmem -count=5 . | tee bench.txt

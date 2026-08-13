@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MohammadmahdiAhmadi/transform"
+	"github.com/goxang/transform"
 )
 
 func FuzzTransform(f *testing.F) {

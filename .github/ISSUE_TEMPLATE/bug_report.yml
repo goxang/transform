@@ -1,0 +1,54 @@
+---
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal Go code that shows the problem.
+      placeholder: |
+        package main
+
+        import (
+            "strings"
+            "github.com/mmahmadi/transform"
+        )
+
+        func main() {
+            t := transform.New()
+            t.RegisterString("upper", strings.ToUpper)
+            ...
+        }
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happens instead? Include panic messages and stack traces.
+    validations:
+      required: true
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Output of `go version`
+      placeholder: go version go1.23.11 linux/amd64
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g. Linux, Windows 11, macOS 14
+    validations:
+      required: true

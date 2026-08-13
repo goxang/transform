@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    # Two Go versions only: the oldest this module supports (go.mod says
+    # 1.19) and the current release. Testing every version in between adds
+    # noise, not signal — the interesting boundary is "works on the
+    # minimum" and "works on the latest".
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ["1.19", "1.26"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Test
+        run: go test -race -shuffle=on -count=1 ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Format check
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+
+      - name: Fuzz (short)
+        shell: bash
+        run: |
+          # go test refuses -fuzz= with multiple matches, so fuzz each target
+          # separately. The regex is anchored: unanchored, FuzzTransform also
+          # matches FuzzTransformNested.
+          for f in $(go test -list='^Fuzz' -run='^$' . | grep '^Fuzz'); do
+            go test -fuzz="^$f\$" -fuzztime=10s -run='^$' .
+          done
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: govulncheck
+        uses: golang/govulncheck-action@v1
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Coverage
+        run: |
+          go test -coverprofile=coverage.out -covermode=atomic .
+          go tool cover -func=coverage.out
+
+      - name: Coverage gate
+        shell: bash
+        run: |
+          go tool cover -func=coverage.out | awk '/^total:/{sub(/%/,"",$3); if ($3+0 < 80) { printf "coverage %.1f%% below 80%% gate\n", $3; exit 1 }}'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out

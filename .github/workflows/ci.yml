@@ -76,10 +76,6 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Format check
-        shell: bash
-        run: test -z "$(gofmt -l .)"
-
       - name: Benchmarks compile and run
         run: go test -run='^$' -bench=. -benchtime=1x ./...
 

@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `TransformValue(reflect.Value)` transforms a value a caller already holds as
+  a `reflect.Value`, without boxing it back into an interface for `Transform`.
+  It follows pointers and interfaces, transforms a struct, slice, array, or map
+  at the end of that chain, and treats anything else as nothing to do rather
+  than as `ErrInvalidSrc`. Unaddressable structs and arrays are left unchanged,
+  matching what passing them by value would do. On an Intel Ultra 7 265K with
+  Go 1.23: 16.0ns -> 11.3ns for a struct with no transformable fields, 124ns ->
+  110ns for a flat struct with two, no change in allocations.
+
+### Fixed
+
+- Writing an element back into an unaddressable array no longer panics. The
+  case was unreachable through `Transform`, which requires a pointer, but
+  `TransformValue` can be handed one.
+
 ## [0.2.0] - 2026-09-07
 
 ### Added
@@ -63,5 +82,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: tag-driven in-place struct field transformation with a
   cached per-type execution plan and a dynamic function registry.
 
+[Unreleased]: https://github.com/goxang/transform/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/goxang/transform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/goxang/transform/releases/tag/v0.1.0

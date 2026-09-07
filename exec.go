@@ -321,9 +321,10 @@ func applyFieldAny(f reflect.Value, fn func(any) (any, error)) error {
 // ========== Runtime transform loops ==========
 
 // transformValue transforms val in place, dereferencing pointers and
-// interfaces as needed. val must be addressable or a reference type (slice,
-// map, pointer); it is never called directly with an unaddressable struct or
-// array — those go through transformElem.
+// interfaces as needed. Internal callers only reach it with an addressable
+// value or a reference type (slice, map, pointer); unaddressable structs and
+// arrays go through transformElem. TransformValue is the exception: it hands
+// over whatever the caller had, so every write below is guarded.
 func (t *Transformer) transformValue(val reflect.Value, depth int) error {
 	if depth > t.maxDepth {
 		return ErrMaxDepth
@@ -450,7 +451,9 @@ func (t *Transformer) transformSlice(val reflect.Value, elemInfo *typeInfo, dept
 		if err != nil {
 			return err
 		}
-		if replacement.IsValid() {
+		// Slice elements are addressable through the backing array, but the
+		// elements of an unaddressable array are not.
+		if replacement.IsValid() && elem.CanSet() {
 			elem.Set(replacement)
 		}
 	}

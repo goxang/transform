@@ -2,6 +2,7 @@ package transform_test
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -315,5 +316,113 @@ func TestStrictRepeatedCallsStayConsistent(t *testing.T) {
 		if !errors.Is(tr.Transform(&v), transform.ErrUnknownKey) {
 			t.Fatalf("call %d did not report ErrUnknownKey", i)
 		}
+	}
+}
+
+// ========== TransformValue ==========
+
+type tvUser struct {
+	Name string `transform:"upper"`
+	Age  int
+}
+
+func TestTransformValuePointer(t *testing.T) {
+	v := tvUser{Name: "alice"}
+	if err := newTransformer().TransformValue(reflect.ValueOf(&v)); err != nil {
+		t.Fatalf("TransformValue: %v", err)
+	}
+	if v.Name != "ALICE" {
+		t.Errorf("Name = %q, want ALICE", v.Name)
+	}
+}
+
+func TestTransformValueAddressableElem(t *testing.T) {
+	v := tvUser{Name: "alice"}
+	if err := newTransformer().TransformValue(reflect.ValueOf(&v).Elem()); err != nil {
+		t.Fatalf("TransformValue: %v", err)
+	}
+	if v.Name != "ALICE" {
+		t.Errorf("Name = %q, want ALICE", v.Name)
+	}
+}
+
+func TestTransformValueInterfaceHoldingPointer(t *testing.T) {
+	v := tvUser{Name: "alice"}
+	var boxed any = &v
+	if err := newTransformer().TransformValue(reflect.ValueOf(&boxed).Elem()); err != nil {
+		t.Fatalf("TransformValue: %v", err)
+	}
+	if v.Name != "ALICE" {
+		t.Errorf("Name = %q, want ALICE", v.Name)
+	}
+}
+
+func TestTransformValueUnaddressableStructIsLeftAlone(t *testing.T) {
+	v := tvUser{Name: "alice"}
+	if err := newTransformer().TransformValue(reflect.ValueOf(v)); err != nil {
+		t.Fatalf("TransformValue: %v", err)
+	}
+	if v.Name != "alice" {
+		t.Errorf("Name = %q, want alice: a struct passed by value must not be written", v.Name)
+	}
+}
+
+func TestTransformValueUnaddressableSliceAndMap(t *testing.T) {
+	tr := newTransformer()
+
+	items := []tvUser{{Name: "alice"}, {Name: "bob"}}
+	if err := tr.TransformValue(reflect.ValueOf(items)); err != nil {
+		t.Fatalf("TransformValue slice: %v", err)
+	}
+	if items[0].Name != "ALICE" || items[1].Name != "BOB" {
+		t.Errorf("items = %v, want ALICE and BOB", items)
+	}
+
+	m := map[string]tvUser{"a": {Name: "alice"}}
+	if err := tr.TransformValue(reflect.ValueOf(m)); err != nil {
+		t.Fatalf("TransformValue map: %v", err)
+	}
+	if m["a"].Name != "ALICE" {
+		t.Errorf("m[a] = %v, want ALICE", m["a"])
+	}
+}
+
+func TestTransformValueUnaddressableArray(t *testing.T) {
+	v := [2]tvUser{{Name: "alice"}, {Name: "bob"}}
+	if err := newTransformer().TransformValue(reflect.ValueOf(v)); err != nil {
+		t.Fatalf("TransformValue: %v", err)
+	}
+	if v[0].Name != "alice" {
+		t.Errorf("v[0].Name = %q, want alice: an array passed by value must not be written", v[0].Name)
+	}
+}
+
+func TestTransformValueNothingToDo(t *testing.T) {
+	tr := newTransformer()
+	var nilPtr *tvUser
+	var nilMap map[string]tvUser
+	cases := map[string]reflect.Value{
+		"zero Value":  {},
+		"nil pointer": reflect.ValueOf(nilPtr),
+		"nil map":     reflect.ValueOf(nilMap),
+		"int":         reflect.ValueOf(42),
+		"string":      reflect.ValueOf("alice"),
+	}
+	for name, val := range cases {
+		if err := tr.TransformValue(val); err != nil {
+			t.Errorf("%s: TransformValue = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestTransformValueCyclicDataIsBounded(t *testing.T) {
+	type node struct {
+		Name string `transform:"upper"`
+		Next *node
+	}
+	n := &node{Name: "loop"}
+	n.Next = n
+	if err := newTransformer().TransformValue(reflect.ValueOf(n)); !errors.Is(err, transform.ErrMaxDepth) {
+		t.Errorf("TransformValue = %v, want ErrMaxDepth", err)
 	}
 }

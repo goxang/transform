@@ -66,10 +66,16 @@ and a `BREAKING CHANGE:` footer.
 
 ## Releasing
 
-Maintainers only:
+Maintainers only. A release is a merge, not a manual tag:
 
-1. Update `CHANGELOG.md` — move "Unreleased" to the new version with a date.
-2. Tag `vX.Y.Z` on `main` and push it. The release workflow verifies the tag
-   matches the changelog, runs the full suite, and publishes the release notes.
+1. In a pull request, move "Unreleased" in `CHANGELOG.md` to the new version
+   with a date.
+2. Merge it. Once every CI job passes on `main`, the `tag` job creates
+   `vX.Y.Z` for that section and the release job runs the suite again and
+   publishes the notes. A merge that adds no version section releases nothing,
+   and a version already tagged is left alone.
 3. `GOPROXY=proxy.golang.org go list -m github.com/goxang/transform@vX.Y.Z` to
    warm the module proxy.
+
+Pushing a `vX.Y.Z` tag by hand still works and takes the same path; it is the
+fallback, not the normal route.

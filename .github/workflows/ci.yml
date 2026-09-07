@@ -168,10 +168,16 @@ jobs:
           # dependencies.
           cache: false
 
-      # On main there is nothing to compare against, so the benchmarks are
-      # only run to prove they still work.
+      # On main there is nothing to compare against, so this is a smoke run:
+      # it proves the benchmarks still work and leaves indicative numbers in
+      # the log for the commit being released. Measuring them six times over
+      # to a precision nobody compares against took 283s, which every release
+      # then waited on.
       - name: Benchmarks
         if: github.event_name != 'pull_request'
+        env:
+          BENCH_COUNT: 1
+          BENCH_TIME: 200ms
         run: make go-benchmark
 
       - name: Compare benchmarks against the base branch

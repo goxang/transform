@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Repository
+
+- The benchmark job on `main` is a smoke run rather than a measurement. There
+  is nothing to compare against there, so running every benchmark six times to
+  a precision no one compares took 283s that each release waited on.
+
 ## [0.3.0] - 2026-09-08
 
 ### Added

@@ -43,6 +43,13 @@ tidy-check: ## Fail if go.mod or go.sum would change
 	mv go.mod.bak go.mod; [[ -f go.sum.bak ]] && mv go.sum.bak go.sum || true; \
 	exit $$status
 
+.PHONY: shellcheck
+shellcheck: ## Lint the scripts under tools/hack (needs shellcheck on PATH)
+	@command -v shellcheck >/dev/null || { \
+		echo "shellcheck not found: https://github.com/koalaman/shellcheck#installing"; \
+		exit 1; }
+	shellcheck tools/hack/*.sh
+
 .PHONY: lint-deps
 lint-deps: ## Install the pinned golangci-lint
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -65,6 +72,10 @@ go-benchmark: ## Run the benchmarks
 .PHONY: go-benchmark-compare
 go-benchmark-compare: ## Compare benchmarks against BASE_REF (default origin/main)
 	./tools/hack/go-benchmark-compare.sh
+
+.PHONY: go-coverage-compare
+go-coverage-compare: ## Compare coverage against BASE_REF (default origin/main)
+	./tools/hack/go-coverage-compare.sh
 
 .PHONY: fuzz
 fuzz: ## Run every fuzz target for FUZZTIME (default 30s)

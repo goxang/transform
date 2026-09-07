@@ -81,6 +81,33 @@ func (t *Transformer) Transform(obj any) error {
 	return t.transformValue(reflect.ValueOf(obj), 0)
 }
 
+// TransformValue applies registered transformation functions in place to the
+// value val refers to. It is the reflect.Value form of Transform, for callers
+// that already hold a reflect.Value and would otherwise have to box it back
+// into an interface to call Transform.
+//
+// Pointers and interfaces are followed. A struct, slice, array, or map at the
+// end of that chain is transformed; any other kind is left alone, as are nil
+// pointers, nil interfaces, and the zero reflect.Value. Unlike Transform,
+// TransformValue never returns ErrInvalidSrc: a reflect.Value gives a caller
+// walking a value graph no way to know in advance which nodes are
+// transformable, so an uninteresting value is nothing to do rather than a
+// mistake.
+//
+// Writing a field back requires a settable destination. reflect.ValueOf
+// returns an unaddressable value, so the fields of a struct passed that way
+// are skipped, exactly as they would be if the struct had been passed to a
+// function by value; pass a pointer, or an addressable value such as
+// reflect.ValueOf(&v).Elem(), to have them transformed. Slices and maps are
+// references, so their elements are transformed either way.
+//
+// Everything else — traversal, tags, errors, the depth limit — matches
+// Transform, including that the first call freezes the Transformer.
+func (t *Transformer) TransformValue(val reflect.Value) error {
+	t.frozen.Store(true)
+	return t.transformValue(val, 0)
+}
+
 // ========== internal helpers ==========
 
 func validateTransformSrc(obj any) error {

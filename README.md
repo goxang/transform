@@ -53,6 +53,25 @@ if err := t.Transform(&u); err != nil {
 `Transform` needs a non-nil pointer to a struct, slice, array, or map. Anything
 else returns `ErrInvalidSrc`.
 
+### Starting from a reflect.Value
+
+Code that already works in reflection — a logging or redaction layer walking a
+value graph, say — can skip the trip back through `interface{}`:
+
+```go
+if err := t.TransformValue(reflect.ValueOf(&u)); err != nil {
+    return err
+}
+```
+
+`TransformValue` follows pointers and interfaces and transforms a struct,
+slice, array, or map at the end of that chain. Anything else is nothing to do,
+not an error, so there is no `ErrInvalidSrc` to handle. Fields are written only
+where the value is settable: a struct or array obtained from
+`reflect.ValueOf(u)` is not addressable and is left alone, the same as passing
+it to a function by value. Slices and maps are references and are transformed
+either way.
+
 ## Registering functions
 
 The package ships no transformations of its own. Three registration methods,

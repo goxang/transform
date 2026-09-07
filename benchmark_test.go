@@ -665,3 +665,61 @@ func BenchmarkTransform_ManualLarge(b *testing.B) {
 		benchSink = u.A
 	}
 }
+
+// ========== reflect.Value entry point ==========
+//
+// A caller that already holds a reflect.Value can either box it back into an
+// interface for Transform or hand it to TransformValue directly. These pairs
+// measure the difference, which is the whole reason TransformValue exists.
+
+func BenchmarkTransform_FromReflectValue(b *testing.B) {
+	tx := newBenchTransformer()
+	v := benchFlat{Email: "alice@example.com", Secret: "12345678"}
+	rv := reflect.ValueOf(&v)
+	_ = tx.Transform(rv.Interface())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v.Email = "alice@example.com"
+		v.Secret = "12345678"
+		_ = tx.Transform(rv.Interface())
+	}
+}
+
+func BenchmarkTransformValue_FlatString(b *testing.B) {
+	tx := newBenchTransformer()
+	v := benchFlat{Email: "alice@example.com", Secret: "12345678"}
+	rv := reflect.ValueOf(&v)
+	_ = tx.TransformValue(rv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v.Email = "alice@example.com"
+		v.Secret = "12345678"
+		_ = tx.TransformValue(rv)
+	}
+}
+
+func BenchmarkTransform_NoTransformFromReflectValue(b *testing.B) {
+	tx := newBenchTransformer()
+	v := benchNoTransform{A: "hello", B: "world", C: "!"}
+	rv := reflect.ValueOf(&v)
+	_ = tx.Transform(rv.Interface())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tx.Transform(rv.Interface())
+	}
+}
+
+func BenchmarkTransformValue_NoTransform(b *testing.B) {
+	tx := newBenchTransformer()
+	v := benchNoTransform{A: "hello", B: "world", C: "!"}
+	rv := reflect.ValueOf(&v)
+	_ = tx.TransformValue(rv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tx.TransformValue(rv)
+	}
+}

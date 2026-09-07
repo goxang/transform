@@ -39,6 +39,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A `Transform` on cyclic data no longer crashes the process with a stack
   overflow.
 
+### Repository
+
+- Make targets covering every check CI runs, so a red build reproduces locally.
+- CI split into named jobs: `lint`, `tidy-check`, `test`, `coverage-test`,
+  `go-benchmark-test`, and `vuln`.
+- `go-benchmark-test` compares a pull request's benchmarks against the base
+  branch. Allocation counts are deterministic, so an increase fails the job;
+  wall-clock deltas are reported but never gated.
+- `tidy-check` fails if `go mod tidy` or `gofmt` would change the committed
+  tree.
+- New workflows: CodeQL, OSV-Scanner, license scan against a permissive
+  allowlist, OpenSSF Scorecard, and a stale-issue sweep.
+- Every GitHub Action is pinned to a commit SHA; dependabot proposes the bumps.
+
 ## [0.1.0] - 2026-09-05
 
 ### Added

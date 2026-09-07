@@ -4,6 +4,8 @@
 [![CI](https://github.com/goxang/transform/actions/workflows/ci.yml/badge.svg)](https://github.com/goxang/transform/actions/workflows/ci.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/goxang/transform)](https://goreportcard.com/report/github.com/goxang/transform)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CodeQL](https://github.com/goxang/transform/actions/workflows/codeql.yml/badge.svg)](https://github.com/goxang/transform/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/goxang/transform/badge)](https://scorecard.dev/viewer/?uri=github.com/goxang/transform)
 
 Struct-tag driven field transformation for Go. You register functions under
 names, tag fields with those names, and a single `Transform` call walks the
@@ -241,15 +243,37 @@ idempotent functions if that matters.
 
 ## Development
 
+Every check CI runs has a make target, so a red build reproduces locally
+without reading a workflow file:
+
 ```bash
-go test ./...
-go test -race ./...
-go test -fuzz='^FuzzTransform$' -run='^$' -fuzztime=30s .
+make            # list the targets
+make all        # tidy-check, fmt-check, vet, test, lint, coverage
+make test       # -race -shuffle=on
+make fuzz       # every fuzz target, 30s each (FUZZTIME=2m to go longer)
+make go-benchmark-compare   # benchmarks against origin/main
 ```
 
-CI runs the suite with `-race -shuffle=on` on Linux, macOS, and Windows against
-Go 1.19 and the current release, plus `go vet`, `gofmt`, `golangci-lint`,
-`govulncheck`, and short fuzz runs, with an 85% coverage gate.
+CI is split into the same jobs:
+
+| Job | What it enforces |
+|---|---|
+| `test` | suite with `-race -shuffle=on` on Linux, macOS, and Windows against Go 1.19 and the current release, plus vet, gofmt, a benchmark smoke run, and 10s of every fuzz target |
+| `lint` | `golangci-lint`, version and enabled set pinned in `.golangci.yml` |
+| `tidy-check` | `go mod tidy` and `gofmt` are no-ops on the committed tree |
+| `coverage-test` | 85% line coverage floor |
+| `go-benchmark-test` | on a pull request, benchmarks against the base branch; an increase in allocations per operation fails the job |
+| `vuln` | `govulncheck` |
+| `codeql` | GitHub's Go queries, on every change and weekly |
+| `osv-scanner` | dependency advisories, on every change and weekly |
+| `license-scan` | dependency licenses against a permissive allowlist |
+| `scorecard` | OpenSSF supply-chain posture, weekly |
+
+Benchmark timings on a shared runner move by double digits between runs, so
+the comparison job reports them and gates only on allocation counts, which are
+deterministic.
+
+Every action is pinned to a commit SHA; dependabot proposes the bumps.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and feature requests are
 welcome — see the issue templates in `.github/ISSUE_TEMPLATE`, and open an issue

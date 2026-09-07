@@ -27,19 +27,26 @@ Changes that are likely to be declined:
 
 ## Working on a change
 
-```bash
-go test ./...                # unit tests and examples
-go test -race -shuffle=on ./...
-go vet ./...
-gofmt -l .                   # must print nothing
-go test -bench=. -benchmem . # if you touched the hot path
-```
-
-Fuzz targets, if you touched traversal:
+CI runs make targets, so the same commands work locally:
 
 ```bash
-go test -fuzz='^FuzzTransform$' -run='^$' -fuzztime=30s .
+make            # list every target
+make all        # tidy-check, fmt-check, vet, test, lint, coverage
+make test       # -race -shuffle=on
 ```
+
+Linting needs the pinned golangci-lint, which `make lint-deps` installs.
+
+If you touched traversal or the hot path:
+
+```bash
+make fuzz                   # every fuzz target, 30s each
+make go-benchmark-compare   # benchmarks against origin/main
+```
+
+`make go-benchmark-compare` is what the pull-request job runs. It fails on an
+increase in allocations per operation and only reports wall-clock deltas:
+allocation counts are deterministic, timings on a shared runner are not.
 
 Requirements for a pull request:
 

@@ -6,6 +6,7 @@ GO ?= go
 GOLANGCI_LINT_VERSION ?= v2.13.2
 COVERAGE_THRESHOLD ?= 85
 BENCH_COUNT ?= 6
+BENCH_TIME ?= 1s
 
 .DEFAULT_GOAL := help
 
@@ -67,7 +68,7 @@ go.test.coverage: ## Run tests with coverage and enforce the threshold
 
 .PHONY: go-benchmark
 go-benchmark: ## Run the benchmarks
-	$(GO) test -run='^$$' -bench=. -benchmem -count=$(BENCH_COUNT) .
+	$(GO) test -run='^$$' -bench=. -benchmem -count=$(BENCH_COUNT) -benchtime=$(BENCH_TIME) .
 
 .PHONY: go-benchmark-compare
 go-benchmark-compare: ## Compare benchmarks against BASE_REF (default origin/main)

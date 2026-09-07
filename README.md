@@ -271,6 +271,7 @@ make all        # tidy-check, fmt-check, vet, test, lint, coverage
 make test       # -race -shuffle=on
 make fuzz       # every fuzz target, 30s each (FUZZTIME=2m to go longer)
 make go-benchmark-compare   # benchmarks against origin/main
+make go-coverage-compare    # coverage against origin/main
 ```
 
 CI is split into the same jobs:
@@ -279,9 +280,10 @@ CI is split into the same jobs:
 |---|---|
 | `test` | suite with `-race -shuffle=on` on Linux, macOS, and Windows against Go 1.19 and the current release, plus vet, gofmt, a benchmark smoke run, and 10s of every fuzz target |
 | `lint` | `golangci-lint`, version and enabled set pinned in `.golangci.yml` |
-| `tidy-check` | `go mod tidy` and `gofmt` are no-ops on the committed tree |
-| `coverage-test` | 85% line coverage floor |
-| `go-benchmark-test` | on a pull request, benchmarks against the base branch; an increase in allocations per operation fails the job |
+| `tidy-check` | `go mod tidy` and `gofmt` are no-ops on the committed tree, and `shellcheck` on the scripts behind the gates |
+| `coverage-test` | 85% line coverage floor, and on a pull request a comparison against the base branch |
+| `go-benchmark-test` | on a pull request, benchmarks against the base branch; an increase in allocations per operation, or more than 5% of wall time, fails the job |
+| `pr-report` | posts the coverage and benchmark comparisons as one comment on the pull request |
 | `vuln` | `govulncheck` |
 | `codeql` | GitHub's Go queries, on every change and weekly |
 | `osv-scanner` | dependency advisories, on every change and weekly |
@@ -289,9 +291,19 @@ CI is split into the same jobs:
 | `scorecard` | OpenSSF supply-chain posture, weekly |
 | `tag` / `release` | on main only: tags the version the changelog declares and publishes the release |
 
-Benchmark timings on a shared runner move by double digits between runs, so
-the comparison job reports them and gates only on allocation counts, which are
-deterministic.
+Every pull request gets one comment holding both comparisons: coverage before
+and after, and each benchmark before and after with its delta, green where the
+change is an improvement and red where it is a regression. The comment is
+rewritten in place, so ten pushes leave one current table rather than ten
+stale ones.
+
+Allocation counts are deterministic, so any increase fails. Wall time is not,
+so it is measured to survive a shared runner. Both sides are built once with
+`-trimpath` — without it each binary has its own build directory compiled in,
+which moves code around and made identical source differ by up to 10% on the
+smallest benchmarks — and then run alternately, round by round, so drift hits
+both equally. Anything that still looks more than 5% slower is re-measured on
+its own over a much longer window before it is allowed to fail the build.
 
 Releasing is a merge. When a pull request lands on main and every job above
 passes, the `tag` job reads the newest version in `CHANGELOG.md`, and if no tag

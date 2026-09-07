@@ -100,3 +100,52 @@ func FuzzTransformNested(f *testing.F) {
 		}
 	})
 }
+
+// FuzzTransformStringContainers exercises the container path: a string
+// transform tagged on slices, arrays, and maps of strings must reach every
+// element and leave the container's shape and keys untouched.
+func FuzzTransformStringContainers(f *testing.F) {
+	f.Add("alpha", "beta", "key")
+	f.Add("", "", "")
+	f.Add("ß", "İ", "\x00")
+
+	f.Fuzz(func(t *testing.T, a, b, k string) {
+		tx := transform.New()
+		tx.RegisterString("upper", strings.ToUpper)
+
+		type obj struct {
+			List  []string            `transform:"upper"`
+			Arr   [2]string           `transform:"upper"`
+			Dict  map[string]string   `transform:"upper"`
+			Deep  [][]string          `transform:"upper"`
+			Multi map[string][]string `transform:"upper"`
+		}
+		v := obj{
+			List:  []string{a, b},
+			Arr:   [2]string{a, b},
+			Dict:  map[string]string{k: a},
+			Deep:  [][]string{{a}, {b}},
+			Multi: map[string][]string{k: {b}},
+		}
+		if err := tx.Transform(&v); err != nil {
+			t.Fatalf("Transform failed: %v", err)
+		}
+
+		wantA, wantB := strings.ToUpper(a), strings.ToUpper(b)
+		if v.List[0] != wantA || v.List[1] != wantB {
+			t.Errorf("List: got %q %q", v.List[0], v.List[1])
+		}
+		if v.Arr[0] != wantA || v.Arr[1] != wantB {
+			t.Errorf("Arr: got %q %q", v.Arr[0], v.Arr[1])
+		}
+		if got, ok := v.Dict[k]; !ok || got != wantA {
+			t.Errorf("Dict[%q]: got %q ok=%v — keys must be preserved verbatim", k, got, ok)
+		}
+		if v.Deep[0][0] != wantA || v.Deep[1][0] != wantB {
+			t.Errorf("Deep: got %v", v.Deep)
+		}
+		if v.Multi[k][0] != wantB {
+			t.Errorf("Multi: got %v", v.Multi)
+		}
+	})
+}

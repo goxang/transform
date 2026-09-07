@@ -424,7 +424,7 @@ func BenchmarkJSON_Unmarshal_Nested(b *testing.B) {
 }
 
 func naiveReflectTransform(val reflect.Value, fns map[string]func(string) string) {
-	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
+	for val.Kind() == reflect.Pointer || val.Kind() == reflect.Interface {
 		if val.IsNil() {
 			return
 		}
@@ -440,7 +440,7 @@ func naiveReflectTransform(val reflect.Value, fns map[string]func(string) string
 		key := sf.Tag.Get("transform")
 		if key != "" {
 			if fn, ok := fns[key]; ok {
-				for f.Kind() == reflect.Ptr {
+				for f.Kind() == reflect.Pointer {
 					if f.IsNil() {
 						break
 					}
@@ -452,7 +452,7 @@ func naiveReflectTransform(val reflect.Value, fns map[string]func(string) string
 			}
 		}
 		// Recurse
-		for f.Kind() == reflect.Ptr {
+		for f.Kind() == reflect.Pointer {
 			if f.IsNil() {
 				break
 			}

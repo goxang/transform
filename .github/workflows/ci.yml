@@ -6,7 +6,49 @@ on:
   pull_request:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
+        with:
+          version: v2.13.2
+
+  tidy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
+
+      - name: go mod tidy is a no-op
+        run: make tidy-check
+
+      - name: Formatted
+        run: make fmt-check
+
   test:
     runs-on: ${{ matrix.os }}
     # Two Go versions only: the oldest this module supports (go.mod says
@@ -17,14 +59,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go: ["1.19", "1.26"]
+        go: ["1.19", "stable"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: ${{ matrix.go }}
-          cache: true
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: Test
         run: go test -race -shuffle=on -count=1 ./...
@@ -32,9 +76,8 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Format check
-        shell: bash
-        run: test -z "$(gofmt -l .)"
+      - name: Benchmarks compile and run
+        run: go test -run='^$' -bench=. -benchtime=1x ./...
 
       - name: Fuzz (short)
         shell: bash
@@ -46,52 +89,62 @@ jobs:
             go test -fuzz="^$f\$" -fuzztime=10s -run='^$' .
           done
 
-  lint:
+  coverage-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+      - name: Coverage
+        run: make go.test.coverage
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          version: latest
+          name: coverage
+          path: coverage.out
+
+  go-benchmark-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # The comparison checks out the base branch, so it needs history.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
+
+      - name: Benchmarks
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            make go-benchmark-compare
+          else
+            make go-benchmark
+          fi
 
   vuln:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.26"
+          go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: govulncheck
-        uses: golang/govulncheck-action@v1
-
-  coverage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26"
-
-      - name: Coverage
-        run: |
-          go test -coverprofile=coverage.out -covermode=atomic .
-          go tool cover -func=coverage.out
-
-      - name: Coverage gate
-        shell: bash
-        run: |
-          go tool cover -func=coverage.out | awk '/^total:/{sub(/%/,"",$3); if ($3+0 < 80) { printf "coverage %.1f%% below 80%% gate\n", $3; exit 1 }}'
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.out
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f  # v1.1.0

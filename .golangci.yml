@@ -1,0 +1,52 @@
+# Pinned so a lint failure means the code changed, not that golangci-lint
+# shipped a new default. Version bumps are a deliberate commit.
+version: "2"
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused) is
+  # on by default; these are the additions.
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - usestdlibvars
+
+  settings:
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    gocritic:
+      enabled-tags: [diagnostic, style, performance]
+      disabled-checks:
+        # Reflection code branches on reflect.Kind constantly; a two-arm switch
+        # is the readable form here, not an if/else.
+        - singleCaseSwitch
+        - ifElseChain
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-strings
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test fixtures deliberately contain odd field shapes and unused members.
+      - path: _test\.go
+        linters: [unused, gocritic, revive]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

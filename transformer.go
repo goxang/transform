@@ -18,6 +18,8 @@ import (
 // Transform panics.
 type Transformer struct {
 	tag         string
+	strict      bool
+	maxDepth    int
 	registry    map[string]stringTransform
 	anyRegistry map[string]anyTransform
 
@@ -34,6 +36,7 @@ type Transformer struct {
 func New(opts ...Option) *Transformer {
 	t := &Transformer{
 		tag:         "transform",
+		maxDepth:    DefaultMaxDepth,
 		registry:    make(map[string]stringTransform),
 		anyRegistry: make(map[string]anyTransform),
 	}
@@ -47,40 +50,45 @@ func New(opts ...Option) *Transformer {
 
 // Transform applies registered transformation functions to obj in place.
 // obj must be a non-nil pointer whose underlying value is a struct, slice,
-// array, or map.
+// array, or map; anything else returns ErrInvalidSrc.
 //
 // Struct fields tagged with the Transformer's tag (default "transform") are
 // matched to registered functions by the tag value. Fields without a matching
-// tag or registered function are left unchanged.
+// tag or registered function are left unchanged — see WithStrict to make an
+// unresolvable tag an error instead.
 //
 // Transform recurses into nested structs, pointers, slices, arrays, and maps.
-// Nested struct fields are also checked for transformation tags.
+// Nested struct fields are also checked for transformation tags. Map keys are
+// never transformed, only values.
 //
 // Transform stops at the first error. If a transform function returns an
 // error, the error is wrapped in a *FieldError and returned immediately.
 // Fields processed before the error remain transformed; fields after are
 // untouched. There is no partial rollback.
 //
-// Recursive types are supported, including mutually recursive ones, but the
-// value graph should be acyclic: traversal follows pointers, slices, maps,
-// and interfaces, so cyclic data (a pointer chain that loops back on itself)
-// recurses without bound.
+// Recursive types are supported, including mutually recursive ones. Cyclic
+// data — a pointer, slice, map, or interface chain that loops back on itself —
+// is bounded by the traversal depth limit and reported as ErrMaxDepth rather
+// than recursing until the stack gives out. See WithMaxDepth.
+//
+// The first call freezes the Transformer: any later Register call panics.
+// After that a Transformer is safe for concurrent use.
 func (t *Transformer) Transform(obj any) error {
 	if err := validateTransformSrc(obj); err != nil {
 		return err
 	}
 	t.frozen.Store(true)
-	return t.transformValue(reflect.ValueOf(obj))
+	return t.transformValue(reflect.ValueOf(obj), 0)
 }
 
 // ========== internal helpers ==========
 
 func validateTransformSrc(obj any) error {
 	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Ptr || val.IsNil() {
+	if val.Kind() != reflect.Pointer || val.IsNil() {
 		return ErrInvalidSrc
 	}
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return ErrInvalidSrc
 		}

@@ -22,6 +22,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
@@ -36,6 +39,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: go mod tidy is a no-op
         run: make tidy-check
@@ -60,8 +66,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: ${{ matrix.go }}
-          # The module has no dependencies, so there is no go.sum to key a
-          # module cache on and setup-go warns when it looks for one.
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
           cache: false
 
       - name: Test
@@ -95,6 +101,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: Coverage
         run: make go.test.coverage
@@ -115,6 +124,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: Benchmarks
         env:
@@ -134,6 +146,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: stable
+          # No go.sum to key a module cache on: the module has no
+          # dependencies.
+          cache: false
 
       - name: govulncheck
         uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f  # v1.1.0

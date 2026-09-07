@@ -52,6 +52,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - New workflows: CodeQL, OSV-Scanner, license scan against a permissive
   allowlist, OpenSSF Scorecard, and a stale-issue sweep.
 - Every GitHub Action is pinned to a commit SHA; dependabot proposes the bumps.
+- Releases are cut by merging to `main`: once every CI job passes there, the
+  `tag` job tags the newest version in this file, if it is not tagged already,
+  and the release job publishes it from that section.
 
 ## [0.1.0] - 2026-09-05
 

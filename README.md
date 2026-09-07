@@ -268,10 +268,16 @@ CI is split into the same jobs:
 | `osv-scanner` | dependency advisories, on every change and weekly |
 | `license-scan` | dependency licenses against a permissive allowlist |
 | `scorecard` | OpenSSF supply-chain posture, weekly |
+| `tag` / `release` | on main only: tags the version the changelog declares and publishes the release |
 
 Benchmark timings on a shared runner move by double digits between runs, so
 the comparison job reports them and gates only on allocation counts, which are
 deterministic.
+
+Releasing is a merge. When a pull request lands on main and every job above
+passes, the `tag` job reads the newest version in `CHANGELOG.md`, and if no tag
+exists for it, creates one and publishes the release from that section. A merge
+that does not add a version section releases nothing.
 
 Every action is pinned to a commit SHA; dependabot proposes the bumps.
 

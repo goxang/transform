@@ -74,11 +74,12 @@ func New(opts ...Option) *Transformer {
 // The first call freezes the Transformer: any later Register call panics.
 // After that a Transformer is safe for concurrent use.
 func (t *Transformer) Transform(obj any) error {
-	if err := validateTransformSrc(obj); err != nil {
+	val := reflect.ValueOf(obj)
+	if err := validateTransformSrc(val); err != nil {
 		return err
 	}
 	t.frozen.Store(true)
-	return t.transformValue(reflect.ValueOf(obj), 0)
+	return t.transformValue(val, 0)
 }
 
 // TransformValue applies registered transformation functions in place to the
@@ -110,9 +111,12 @@ func (t *Transformer) TransformValue(val reflect.Value) error {
 
 // ========== internal helpers ==========
 
-func validateTransformSrc(obj any) error {
-	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Pointer || val.IsNil() {
+// validateTransformSrc reports whether val is something Transform can write
+// through: a non-nil pointer chain ending in a struct, slice, array, or map.
+// It takes the reflect.Value rather than the interface so that Transform
+// unpacks the interface once and hands the same value to the walk.
+func validateTransformSrc(val reflect.Value) error {
+	if val.Kind() != reflect.Pointer {
 		return ErrInvalidSrc
 	}
 	for val.Kind() == reflect.Pointer {

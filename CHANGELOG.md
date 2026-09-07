@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-08
+
 ### Added
 
 - `TransformValue(reflect.Value)` transforms a value a caller already holds as
@@ -17,11 +19,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Go 1.23: 16.0ns -> 11.3ns for a struct with no transformable fields, 124ns ->
   110ns for a flat struct with two, no change in allocations.
 
+### Changed
+
+- `Transform` unpacks its argument into a `reflect.Value` once and hands the
+  same value to validation and to the walk, instead of doing it twice.
+
 ### Fixed
 
 - Writing an element back into an unaddressable array no longer panics. The
   case was unreachable through `Transform`, which requires a pointer, but
   `TransformValue` can be handed one.
+
+### Repository
+
+- The benchmark comparison job went from 513s to roughly 90s. It builds both
+  sides once instead of recompiling per run, checks the base ref out into a
+  git worktree rather than over the top of the current one, and compares only
+  the benchmarks that measure this package — the `encoding/json` and
+  hand-written baselines are reference points for the README, not something a
+  change here can regress.
+- Wall time is now gated, not merely reported. Allocation counts still fail on
+  any increase; a benchmark more than 5% slower is re-measured on its own over
+  a much longer window and only fails if it stays slow. The two sides are run
+  alternately so that a runner drifting mid-job moves both together.
+- Both sides of the comparison are built with `-trimpath`. Without it each
+  binary carries its own build directory, which shifts code and data enough to
+  make identical source differ by up to 10% on the smallest benchmarks — a
+  difference the comparison used to attribute to the change under review. With
+  it, identical source compiles to byte-identical binaries.
+- Coverage is compared against the base branch as well as against the 85%
+  floor. A drop of more than 5 points fails.
+- Both comparisons are posted as a single pull request comment, rewritten in
+  place on each push: coverage before and after, then every benchmark before
+  and after with its delta, green for an improvement and red for a regression.
+- Benchmarks measuring something other than this package are named
+  `BenchmarkBaseline_*`, so the two groups can be told apart by name rather
+  than by reading each one.
 
 ## [0.2.0] - 2026-09-07
 
@@ -82,6 +115,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: tag-driven in-place struct field transformation with a
   cached per-type execution plan and a dynamic function registry.
 
-[Unreleased]: https://github.com/goxang/transform/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/goxang/transform/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/goxang/transform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/goxang/transform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/goxang/transform/releases/tag/v0.1.0

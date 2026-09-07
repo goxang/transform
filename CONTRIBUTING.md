@@ -42,11 +42,19 @@ If you touched traversal or the hot path:
 ```bash
 make fuzz                   # every fuzz target, 30s each
 make go-benchmark-compare   # benchmarks against origin/main
+make go-coverage-compare    # coverage against origin/main
 ```
 
-`make go-benchmark-compare` is what the pull-request job runs. It fails on an
-increase in allocations per operation and only reports wall-clock deltas:
-allocation counts are deterministic, timings on a shared runner are not.
+Both compare targets are what the pull-request jobs run, and their output is
+posted back as a single comment on the pull request: coverage before and
+after, then every benchmark before and after.
+
+Allocations per operation are deterministic, so any increase fails. Wall time
+is not, so it is measured carefully rather than waved through — both sides are
+built once with `-trimpath` and run alternately, and anything more than 5%
+slower is re-measured over a much longer window before it fails anything. If a
+benchmark of yours regresses, the number has already survived that second
+look; treat it as real.
 
 Requirements for a pull request:
 

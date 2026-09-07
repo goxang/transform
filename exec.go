@@ -89,7 +89,10 @@ func (t *Transformer) compileField(fp *fieldPlan) func(reflect.Value, int) error
 		if fn == nil && fnErr == nil {
 			return nil
 		}
-		return func(parent reflect.Value, depth int) error {
+		// No depth argument: the element types were resolved at plan time
+		// and bottom out in strings, so applyStringDeep recurses over a
+		// shape that is finite by construction.
+		return func(parent reflect.Value, _ int) error {
 			f, ok := derefField(parent, index)
 			if !ok || !f.CanSet() {
 				return nil

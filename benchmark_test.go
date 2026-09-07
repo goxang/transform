@@ -205,7 +205,7 @@ func naiveFns() map[string]func(string) string {
 	}
 }
 
-func BenchmarkNaive_FlatString(b *testing.B) {
+func BenchmarkBaseline_NaiveFlat(b *testing.B) {
 	fns := naiveFns()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -291,7 +291,7 @@ func BenchmarkTransform_10Field(b *testing.B) {
 	}
 }
 
-func BenchmarkNaive_10Field(b *testing.B) {
+func BenchmarkBaseline_Naive10Field(b *testing.B) {
 	upper := strings.ToUpper
 	mask := func(s string) string {
 		if len(s) <= 4 {
@@ -321,7 +321,7 @@ func BenchmarkTransform_20Field(b *testing.B) {
 	}
 }
 
-func BenchmarkNaive_20Field(b *testing.B) {
+func BenchmarkBaseline_Naive20Field(b *testing.B) {
 	upper := strings.ToUpper
 	mask := func(s string) string {
 		if len(s) <= 4 {
@@ -357,7 +357,7 @@ func BenchmarkTransform_50Field(b *testing.B) {
 	}
 }
 
-func BenchmarkNaive_50Field(b *testing.B) {
+func BenchmarkBaseline_Naive50Field(b *testing.B) {
 	upper := strings.ToUpper
 	mask := func(s string) string {
 		if len(s) <= 4 {
@@ -379,7 +379,7 @@ func BenchmarkNaive_50Field(b *testing.B) {
 	}
 }
 
-func BenchmarkNaive_Nested(b *testing.B) {
+func BenchmarkBaseline_NaiveNested(b *testing.B) {
 	fns := naiveFns()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -396,7 +396,7 @@ func BenchmarkNaive_Nested(b *testing.B) {
 // apples-to-apples comparison — but it is the honest one for "what does
 // the standard library cost for this job".
 
-func BenchmarkJSON_Unmarshal_Flat(b *testing.B) {
+func BenchmarkBaseline_JSONFlat(b *testing.B) {
 	data := []byte(`{"name":"alice","email":"alice@example.com","secret":"12345678","phone":"123","amount":100}`)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -405,7 +405,7 @@ func BenchmarkJSON_Unmarshal_Flat(b *testing.B) {
 	}
 }
 
-func BenchmarkJSON_Unmarshal_20Field(b *testing.B) {
+func BenchmarkBaseline_JSON20Field(b *testing.B) {
 	data := []byte(`{"f01":"a","f02":"","f03":"b","f04":"","f05":"c","f06":"","f07":"d","f08":"","f09":"e","f10":"","f11":"f","f12":"","f13":"g","f14":"","f15":"h","f16":"","f17":"","f18":"","f19":"","f20":""}`)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -414,7 +414,7 @@ func BenchmarkJSON_Unmarshal_20Field(b *testing.B) {
 	}
 }
 
-func BenchmarkJSON_Unmarshal_Nested(b *testing.B) {
+func BenchmarkBaseline_JSONNested(b *testing.B) {
 	data := []byte(`{"inner":{"name":"alice","email":"alice@example.com","secret":"12345678","phone":"123","amount":100},"id":"keep"}`)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -494,7 +494,7 @@ func trimBench(s string) string      { return strings.TrimSpace(s) }
 // writes in either benchmark.
 var benchSink string
 
-func BenchmarkTransform_PackageNorm(b *testing.B) {
+func BenchmarkTransform_Norm(b *testing.B) {
 	tx := transform.New()
 	tx.RegisterString("normalize", normalizeBench)
 	tx.RegisterString("trim", trimBench)
@@ -510,7 +510,7 @@ func BenchmarkTransform_PackageNorm(b *testing.B) {
 	}
 }
 
-func BenchmarkTransform_ManualNorm(b *testing.B) {
+func BenchmarkBaseline_ManualNorm(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -525,7 +525,7 @@ func BenchmarkTransform_ManualNorm(b *testing.B) {
 // 20 transforms applied by hand. This is the other end of the spectrum,
 // where the hand-written loop is long and the library's fixed overhead
 // matters less.
-func BenchmarkTransform_Manual50Field(b *testing.B) {
+func BenchmarkBaseline_Manual50Field(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -602,7 +602,7 @@ var (
 	realTitle = "  My Go   Performance Notes "
 )
 
-func BenchmarkTransform_PackageReal(b *testing.B) {
+func BenchmarkTransform_Real(b *testing.B) {
 	tx := transform.New()
 	tx.RegisterString("email", emailBench)
 	tx.RegisterString("collapse", collapseBench)
@@ -618,7 +618,7 @@ func BenchmarkTransform_PackageReal(b *testing.B) {
 	}
 }
 
-func BenchmarkTransform_ManualReal(b *testing.B) {
+func BenchmarkBaseline_ManualReal(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -640,7 +640,7 @@ type benchLarge struct {
 	B string `transform:"trim"`
 }
 
-func BenchmarkTransform_PackageLarge(b *testing.B) {
+func BenchmarkTransform_LargeStrings(b *testing.B) {
 	tx := transform.New()
 	tx.RegisterString("upper", strings.ToUpper)
 	tx.RegisterString("trim", strings.TrimSpace)
@@ -655,7 +655,7 @@ func BenchmarkTransform_PackageLarge(b *testing.B) {
 	}
 }
 
-func BenchmarkTransform_ManualLarge(b *testing.B) {
+func BenchmarkBaseline_ManualLarge(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

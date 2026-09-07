@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      # A tag is permanent once the module proxy has seen it, so the gates
+      # that matter run before the release is published, not after.
+      - name: Test
+        run: go test -race -shuffle=on -count=1 ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Changelog entry exists
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no '## [$version]' section for tag $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - name: Extract release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          cat release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

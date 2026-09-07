@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # The module has no Go dependencies; this keeps the CI actions current,
+  # which is the only supply chain the repository actually has.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
+    labels: [dependencies]

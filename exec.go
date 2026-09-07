@@ -36,7 +36,7 @@ func (t *Transformer) compileTypeInfo(info *typeInfo) {
 // through an unexported embedded field is readable but not settable.
 func derefField(parent reflect.Value, index int) (v reflect.Value, ok bool) {
 	f := parent.Field(index)
-	for f.Kind() == reflect.Ptr {
+	for f.Kind() == reflect.Pointer {
 		if f.IsNil() {
 			return reflect.Value{}, false
 		}
@@ -233,7 +233,7 @@ func (t *Transformer) compileField(fp *fieldPlan) func(reflect.Value, int) error
 // whose element types are known at plan time to bottom out in strings, so the
 // recursion is bounded by the type's shape and cannot run away.
 func applyStringDeep(v reflect.Value, fn func(string) string, fnErr func(string) (string, error)) error {
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return nil
 		}
@@ -328,7 +328,7 @@ func (t *Transformer) transformValue(val reflect.Value, depth int) error {
 	if depth > t.maxDepth {
 		return ErrMaxDepth
 	}
-	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
+	for val.Kind() == reflect.Pointer || val.Kind() == reflect.Interface {
 		if val.IsNil() {
 			return nil
 		}
@@ -358,7 +358,7 @@ func (t *Transformer) transformValue(val reflect.Value, depth int) error {
 // If info is non-nil it is used for the struct fast path (avoiding a cache
 // lookup); callers pass the element type's precomputed plan when available.
 func (t *Transformer) transformElem(v reflect.Value, info *typeInfo, depth int) (reflect.Value, error) {
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return reflect.Value{}, nil
 		}

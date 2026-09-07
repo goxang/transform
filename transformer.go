@@ -85,10 +85,10 @@ func (t *Transformer) Transform(obj any) error {
 
 func validateTransformSrc(obj any) error {
 	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Ptr || val.IsNil() {
+	if val.Kind() != reflect.Pointer || val.IsNil() {
 		return ErrInvalidSrc
 	}
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return ErrInvalidSrc
 		}

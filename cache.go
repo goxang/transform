@@ -109,7 +109,7 @@ func (b *builder) classifyFunc(key string) funcKind {
 }
 
 func (t *Transformer) getTypeInfo(rt reflect.Type) *typeInfo {
-	for rt.Kind() == reflect.Ptr {
+	for rt.Kind() == reflect.Pointer {
 		rt = rt.Elem()
 	}
 	if cached, ok := t.cache.Load(rt); ok {
@@ -134,7 +134,7 @@ func (t *Transformer) getTypeInfo(rt reflect.Type) *typeInfo {
 // its info is still under construction is a cycle: the in-progress placeholder
 // is returned and the cycle is marked for post-processing in finalize.
 func (b *builder) build(rt reflect.Type) *typeInfo {
-	for rt.Kind() == reflect.Ptr {
+	for rt.Kind() == reflect.Pointer {
 		rt = rt.Elem()
 	}
 	if cached, ok := b.t.cache.Load(rt); ok {
@@ -293,7 +293,7 @@ func strictDiagnosis(fp *fieldPlan, fk funcKind) error {
 
 // derefType unwraps pointer indirection from a type.
 func derefType(rt reflect.Type) reflect.Type {
-	for rt.Kind() == reflect.Ptr {
+	for rt.Kind() == reflect.Pointer {
 		rt = rt.Elem()
 	}
 	return rt
@@ -311,7 +311,7 @@ const maxTypeUnwrap = 100
 func hasStringLeaf(rt reflect.Type) bool {
 	for i := 0; i < maxTypeUnwrap; i++ {
 		switch rt.Kind() {
-		case reflect.Ptr, reflect.Slice, reflect.Array, reflect.Map:
+		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
 			rt = rt.Elem()
 		case reflect.String:
 			return true
@@ -383,7 +383,7 @@ func (b *builder) classifyField(ft reflect.Type, fp *fieldPlan, fk funcKind) {
 
 	switch baseType.Kind() {
 	case reflect.Struct:
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			fp.kind = kindPtrStruct
 		} else {
 			fp.kind = kindStruct

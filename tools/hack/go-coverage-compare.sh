@@ -57,16 +57,21 @@ log "checking out $BASE_REF ($(git rev-parse --short "$BASE_REF")) into a worktr
 git worktree add --detach --quiet "$base_dir" "$BASE_REF"
 (cd "$base_dir" && go test -coverprofile="$work_dir/base.out" -covermode=atomic . >/dev/null)
 
-# Reduce `go tool cover -func` to "file:func percent". The line number it
-# prints is deliberately dropped: a function that moved down the file is not
-# a coverage change, and keying on the line would report every one as if it
-# were.
+# Reduce `go tool cover -func` to "file:func percent".
+#
+# The line number it prints is deliberately dropped: a function that moved
+# down the file is not a coverage change, and keying on the line would report
+# every one as if it were. The module path in front of the file name goes too
+# — it is the same for every row, and it is long enough to push the numbers
+# out of their columns in the pull request comment.
 summarize() {
 	go tool cover -func="$1" | awk '
 		/^total:/ { printf "total: %s\n", $NF; next }
 		NF >= 3 {
 			split($1, loc, ":")
-			printf "%s:%s %s\n", loc[1], $2, $NF
+			file = loc[1]
+			sub(/.*\//, "", file)
+			printf "%s:%s %s\n", file, $2, $NF
 		}
 	' | sort
 }
@@ -94,17 +99,18 @@ if [[ -n "$COVERAGE_REPORT" ]]; then
 			"a drop of more than ${COVERAGE_MAX_DROP} points is a failure."
 		echo
 		echo '```diff'
+		printf '  %-38s %10s %10s %8s\n' "" "base" "head" "delta"
 		awk -v b="$base_total" -v h="$head_total" -v d="$delta" -v drop="$COVERAGE_MAX_DROP" \
 			'BEGIN {
 				mark = (d > 0) ? "+" : ((d < -drop) ? "-" : ((d < 0) ? "-" : " "))
-				printf "%s %-34s %9.1f%% %9.1f%% %+7.1f\n", mark, "total", b, h, d
+				printf "%s %-38s %9.1f%% %9.1f%% %+7.1f\n", mark, "total", b, h, d
 			}'
 		if [[ -s "$work_dir/changed" ]]; then
 			echo
 			awk '{
 				d = $3 - $2
 				mark = (d > 0) ? "+" : "-"
-				printf "%s %-34s %9.1f%% %9.1f%% %+7.1f\n", mark, $1, $2, $3, d
+				printf "%s %-38s %9.1f%% %9.1f%% %+7.1f\n", mark, $1, $2, $3, d
 			}' "$work_dir/changed" | head -20
 		fi
 		echo '```'

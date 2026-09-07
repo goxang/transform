@@ -1,6 +1,9 @@
 # transform
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/goxang/transform.svg)](https://pkg.go.dev/github.com/goxang/transform)
+[![CI](https://github.com/goxang/transform/actions/workflows/ci.yml/badge.svg)](https://github.com/goxang/transform/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/goxang/transform)](https://goreportcard.com/report/github.com/goxang/transform)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Struct-tag driven field transformation for Go. You register functions under
 names, tag fields with those names, and a single `Transform` call walks the
@@ -29,17 +32,19 @@ t.RegisterString("email", func(s string) string {
 })
 
 type User struct {
-    Name  string `transform:"trim"`
-    Email string `transform:"email"`
+    Name  string   `transform:"trim"`
+    Email string   `transform:"email"`
+    Tags  []string `transform:"trim"`
     Age   int
 }
 
-u := User{Name: "  Alice ", Email: " ALICE@Example.COM ", Age: 30}
+u := User{Name: "  Alice ", Email: " ALICE@Example.COM ", Tags: []string{" go "}, Age: 30}
 if err := t.Transform(&u); err != nil {
     return err
 }
 // u.Name  == "Alice"
 // u.Email == "alice@example.com"
+// u.Tags  == []string{"go"}
 // u.Age   == 30, untagged and untouched
 ```
 
@@ -53,7 +58,7 @@ picked by the shape of your function:
 
 | Method | Signature | Applies to |
 |---|---|---|
-| `RegisterString` | `func(string) string` | `string` / `*string` fields, and `any` fields holding a string |
+| `RegisterString` | `func(string) string` | `string` / `*string` fields, containers of strings, and `any` fields holding a string |
 | `RegisterStringErr` | `func(string) (string, error)` | same, but an error aborts the transform |
 | `RegisterAny` | `func(any) (any, error)` | any field type — the escape hatch |
 
@@ -74,12 +79,16 @@ type Order struct {
 Things worth knowing before you reach for the tag:
 
 - The tag value is one opaque key, looked up verbatim. `transform:"a,b"` does
-  **not** chain two functions; register a key literally named `"a,b"`, or do
-  both steps in one function.
+  **not** chain two functions, and there are no json-style options — register a
+  key literally named `"a,b"`, or do both steps in one function.
 - Keys are unique across all three registries. An empty key, a nil function, or
   a duplicate key panics at registration.
-- A string function on a compound field (struct, slice, map) does not apply —
-  the field is still traversed, so tagged fields inside it are transformed.
+- A string function applies to a container whose elements bottom out in strings:
+  `[]string`, `map[string]string`, `[3]string`, `[][]string`, `map[K]*string`.
+  Every element is transformed; map **keys** never are.
+- A string function on any other compound field (a struct, `[]int`) does not
+  apply — the field is still traversed, so tagged fields inside it are
+  transformed.
 - A `RegisterAny` function on a compound field runs on the whole value first,
   then traversal continues into it.
 - `RegisterAny` must return something assignable to the field's type or
@@ -87,6 +96,37 @@ Things worth knowing before you reach for the tag:
 
 Use `transform.New(transform.WithTag("xform"))` to read `xform:"..."` tags
 instead of the default `transform:"..."`.
+
+## Strict mode
+
+By default a tag that resolves to nothing is ignored. That makes a typo look
+exactly like a working transformation:
+
+```go
+type User struct {
+    Name string `transform:"uppr"` // silently does nothing
+}
+```
+
+`WithStrict` turns those into errors, checked once when the type's plan is
+built, so it costs nothing on the hot path:
+
+```go
+t := transform.New(transform.WithStrict())
+t.RegisterString("upper", strings.ToUpper)
+
+err := t.Transform(&User{})
+// transform User.Name (key "uppr"): no transformation registered for key
+errors.Is(err, transform.ErrUnknownKey) // true
+```
+
+It reports `ErrUnknownKey` for a key that was never registered (including a
+`transform:"upper,omitempty"` tag, which is one key named `upper,omitempty`),
+and `ErrUnusableKey` for a key that cannot act on the field it is attached to —
+a string function on an `int`, or any tag on an unexported field.
+
+Strict mode is recommended for new code. It is opt-in so it cannot break an
+existing program on upgrade.
 
 ## Traversal
 
@@ -114,9 +154,8 @@ Details:
 - `[]byte` is not treated as a string. Use `RegisterAny` for it.
 - Struct and array values reached through a map or an interface are not
   addressable, so they are copied, transformed, and written back.
-- Recursive types work, including mutually recursive ones. Cyclic *data* does
-  not: traversal follows pointers, so a pointer chain that loops back on itself
-  recurses without bound.
+- Recursive *types* work, including mutually recursive ones. Cyclic *data* is
+  bounded — see below.
 
 ## Errors
 
@@ -131,6 +170,26 @@ if errors.As(err, &fe) {
 ```
 
 There is no rollback. Fields transformed before the failure stay transformed.
+
+The sentinel errors are `ErrInvalidSrc`, `ErrMaxDepth`, `ErrUnknownKey`, and
+`ErrUnusableKey`; match them with `errors.Is`.
+
+## Cyclic data
+
+Traversal follows pointers, slices, maps, and interfaces, so a value graph that
+loops back on itself has no natural end. Rather than recursing into a stack
+overflow — which Go cannot recover from — traversal is bounded at
+`DefaultMaxDepth` (1000) levels and returns `ErrMaxDepth`:
+
+```go
+n := &Node{Name: "loop"}
+n.Next = n
+errors.Is(t.Transform(n), transform.ErrMaxDepth) // true
+```
+
+`transform.New(transform.WithMaxDepth(50))` tightens the bound; raise it if you
+have legitimately deeper data. The check is two integer comparisons per struct,
+so it does not show up in the benchmarks.
 
 ## Lifecycle and concurrency
 
@@ -149,26 +208,28 @@ drops the fields with nothing to do — then caches it by `reflect.Type`. Every
 later call is a loop over those closures, with no tag parsing and no registry
 lookups.
 
-AMD Ryzen 7 4800H, Go 1.26, `go test -bench=. -benchmem`:
+Intel Core Ultra 7 265K, Go 1.23, `go test -bench=. -benchmem -count=6`,
+median of six:
 
 | | ns/op | allocs/op |
 |---|---:|---:|
-| flat struct, warm cache | 355 | 2 |
-| flat struct, first call for the type | 4339 | 16 |
-| 20 fields, 8 transformed | 720 | 5 |
-| same 20 fields, uncached reflection | 2305 | 5 |
+| flat struct, warm cache | 118 | 2 |
+| flat struct, first call for the type | 1930 | 25 |
+| 20 fields, 8 transformed | 307 | 5 |
+| same 20 fields, hand-written reflection walk | 1013 | 24 |
+| 4-entry `map[string]Struct` | 1120 | 13 |
 
-Against a hand-written equivalent, the fixed overhead is roughly 150–200ns per
-call. That is the whole story: on two trivial transforms over short strings it
-is a ~9× slowdown (201ns vs 22ns), on three realistic text-cleaning functions it
-disappears into the noise (1.7µs vs 1.9µs), and on 9 KB strings it is
-unmeasurable. If your transforms are one-liners inside a hot loop, write the
-loop. Otherwise the tag is cheaper to maintain than the traversal code.
+Against a hand-written non-reflective equivalent, the fixed overhead is roughly
+65ns per call. That is the whole story: on two trivial transforms over short
+strings it is a ~5× slowdown (81ns vs 15ns), on three realistic text-cleaning
+functions it is ~20% (1.05µs vs 0.87µs), and on 9 KB strings it is unmeasurable
+(19.5µs either way). If your transforms are one-liners inside a hot loop, write
+the loop. Otherwise the tag is cheaper to maintain than the traversal code.
 
 Reproduce with:
 
 ```bash
-go test -bench=. -benchmem -count=5 . | tee bench.txt && benchstat bench.txt
+go test -bench=. -benchmem -count=6 . | tee bench.txt && benchstat bench.txt
 ```
 
 ## What it is not
@@ -188,10 +249,11 @@ go test -fuzz='^FuzzTransform$' -run='^$' -fuzztime=30s .
 
 CI runs the suite with `-race -shuffle=on` on Linux, macOS, and Windows against
 Go 1.19 and the current release, plus `go vet`, `gofmt`, `golangci-lint`,
-`govulncheck`, and short fuzz runs.
+`govulncheck`, and short fuzz runs, with an 85% coverage gate.
 
-Bug reports and feature requests are welcome — see the issue templates in
-`.github/ISSUE_TEMPLATE`, and open an issue before starting larger work.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and feature requests are
+welcome — see the issue templates in `.github/ISSUE_TEMPLATE`, and open an issue
+before starting larger work.
 
 ## License
 

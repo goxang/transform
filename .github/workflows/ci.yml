@@ -49,6 +49,11 @@ jobs:
       - name: Formatted
         run: make fmt-check
 
+      # A merge only releases a versioned changelog section, so library changes
+      # left under Unreleased would land on main untagged.
+      - name: Library changes are released
+        run: make changelog-check
+
       # The coverage and benchmark gates are shell, so shell gets linted too.
       # shellcheck ships on the runner image.
       - name: Shell scripts
@@ -279,7 +284,7 @@ jobs:
             exit 1
           fi
           if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-            echo "v$version is already tagged; nothing to release"
+            echo "::notice::v$version is already tagged; add a new version section to CHANGELOG.md to release"
             exit 0
           fi
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
@@ -302,6 +307,7 @@ jobs:
     if: needs.tag.outputs.tag != ''
     permissions:
       contents: write
+      id-token: write
     uses: ./.github/workflows/release.yml
     with:
       tag: ${{ needs.tag.outputs.tag }}

@@ -61,10 +61,13 @@ Requirements for a pull request:
 - Tests for the behavior you changed. Coverage is gated at 85%.
 - The module builds on Go 1.19 — no newer standard-library APIs without raising
   the minimum in `go.mod`, which is a deliberate decision, not a side effect.
-- Public API changes come with doc comments and a `CHANGELOG.md` entry under
-  "Unreleased".
+- Library changes come with doc comments and a `CHANGELOG.md` entry in a new
+  version section; repository-only changes go under "Unreleased", "Repository".
 - Benchmarks before/after for hot-path changes, with the machine and Go version
   stated.
+
+Pull requests also get inline comments from an automated Gemini review. They are
+advisory: address what is right, resolve what is not, it never blocks a merge.
 
 ## Commit messages
 
@@ -77,7 +80,8 @@ and a `BREAKING CHANGE:` footer.
 Maintainers only. A release is a merge, not a manual tag:
 
 1. In a pull request, move "Unreleased" in `CHANGELOG.md` to the new version
-   with a date.
+   with a date. CI rejects library changes (`Added`, `Changed`, `Fixed`, ...)
+   left under Unreleased, so a code change cannot land without a release.
 2. Merge it. Once every CI job passes on `main`, the `tag` job creates
    `vX.Y.Z` for that section and the release job runs the suite again and
    publishes the notes. A merge that adds no version section releases nothing,

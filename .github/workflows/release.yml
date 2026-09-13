@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Keyless signing of the release archive through Sigstore.
+      id-token: write
     env:
       # A tag push carries the tag in the ref; a workflow_call runs on main
       # and has to be told which one it is publishing.
@@ -63,11 +65,22 @@ jobs:
           ' CHANGELOG.md > release-notes.md
           cat release-notes.md
 
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+
+      - name: Sign source archive
+        run: |
+          archive="transform-$RELEASE_TAG.tar.gz"
+          git archive --format=tar.gz --prefix="transform-$RELEASE_TAG/" -o "$archive" "$RELEASE_TAG"
+          cosign sign-blob --yes --bundle "$archive.sigstore.json" "$archive"
+
       - name: Publish release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           # Named explicitly: on a workflow_call the ref is main, not the tag.
           tag_name: ${{ env.RELEASE_TAG }}
           body_path: release-notes.md
+          files: |
+            transform-*.tar.gz
+            transform-*.tar.gz.sigstore.json
           draft: false
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}

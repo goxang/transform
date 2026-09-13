@@ -6,11 +6,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-13
+
+No library code changes.
+
 ### Repository
 
 - The benchmark job on `main` is a smoke run rather than a measurement. There
   is nothing to compare against there, so running every benchmark six times to
   a precision no one compares took 283s that each release waited on.
+- Release archives are signed with Sigstore; each release carries
+  `transform-vX.Y.Z.tar.gz` and its `.sigstore.json` bundle.
+- Pull requests get an advisory inline review from Gemini. It only comments,
+  never blocks a merge, and skips itself when `GEMINI_API_KEY` is not set.
+- CI fails a pull request that leaves library changes under Unreleased, since
+  merging it would release nothing.
+- README trimmed to the essentials; the retired Go Report Card badge is gone.
 
 ## [0.3.0] - 2026-09-08
 
@@ -121,7 +132,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial release: tag-driven in-place struct field transformation with a
   cached per-type execution plan and a dynamic function registry.
 
-[Unreleased]: https://github.com/goxang/transform/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/goxang/transform/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/goxang/transform/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/goxang/transform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/goxang/transform/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/goxang/transform/releases/tag/v0.1.0

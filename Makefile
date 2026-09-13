@@ -15,7 +15,7 @@ help: ## Show this help
 	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z0-9_.-]+:.*## / { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 .PHONY: all
-all: tidy-check fmt-check vet test lint go.test.coverage ## Run everything CI runs, except fuzzing
+all: tidy-check fmt-check changelog-check vet test lint go.test.coverage ## Run everything CI runs, except fuzzing
 
 .PHONY: test
 test: ## Run the test suite with the race detector
@@ -43,6 +43,12 @@ tidy-check: ## Fail if go.mod or go.sum would change
 	if [[ -f go.sum.bak ]] && ! diff -q go.sum go.sum.bak >/dev/null; then echo "go mod tidy changed go.sum; commit the result"; status=1; fi; \
 	mv go.mod.bak go.mod; [[ -f go.sum.bak ]] && mv go.sum.bak go.sum || true; \
 	exit $$status
+
+.PHONY: changelog-check
+changelog-check: ## Fail if library changes sit under Unreleased, where merging would release nothing
+	@if awk '/^## \[/ { u = /Unreleased/ } u && /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/ { f = 1 } END { exit !f }' CHANGELOG.md; then \
+		echo "CHANGELOG.md has library changes under Unreleased; move them into a '## [X.Y.Z] - YYYY-MM-DD' section so the merge releases them"; \
+		exit 1; fi
 
 .PHONY: shellcheck
 shellcheck: ## Lint the scripts under tools/hack (needs shellcheck on PATH)

@@ -1,6 +1,8 @@
 package transform_test
 
 import (
+	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -41,6 +43,43 @@ func ExampleTransformer_RegisterStringErr() {
 	}
 	fmt.Println(u.Name)
 	// Output: ALICE
+}
+
+func ExampleTransformer_RegisterBytes() {
+	t := transform.New()
+	t.RegisterBytes("redact", func(b []byte) []byte {
+		return bytes.Repeat([]byte("*"), len(b))
+	})
+
+	type Record struct {
+		Key    []byte   `transform:"redact"`
+		Frames [][]byte `transform:"redact"`
+	}
+	r := Record{Key: []byte("hunter2"), Frames: [][]byte{[]byte("ab"), []byte("cde")}}
+	if err := t.Transform(&r); err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s %s\n", r.Key, r.Frames)
+	// Output: ******* [** ***]
+}
+
+func ExampleTransformer_RegisterBytesErr() {
+	t := transform.New()
+	t.RegisterBytesErr("decode", func(b []byte) ([]byte, error) {
+		out := make([]byte, hex.DecodedLen(len(b)))
+		n, err := hex.Decode(out, b)
+		return out[:n], err
+	})
+
+	type Frame struct {
+		Body []byte `transform:"decode"`
+	}
+	f := Frame{Body: []byte("6f6b")}
+	if err := t.Transform(&f); err != nil {
+		panic(err)
+	}
+	fmt.Printf("%s\n", f.Body)
+	// Output: ok
 }
 
 func ExampleTransformer_RegisterAny() {

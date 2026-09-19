@@ -48,6 +48,8 @@ else returns `ErrInvalidSrc`. Code already holding a `reflect.Value` can call
 |---|---|---|
 | `RegisterString` | `func(string) string` | strings, `*string`, containers of strings |
 | `RegisterStringErr` | `func(string) (string, error)` | same; an error aborts |
+| `RegisterBytes` | `func([]byte) []byte` | `[]byte`, `*[]byte`, containers of byte slices |
+| `RegisterBytesErr` | `func([]byte) ([]byte, error)` | same; an error aborts |
 | `RegisterAny` | `func(any) (any, error)` | any field; result must be assignable, `(nil, nil)` leaves it unchanged |
 
 - A tag value is one opaque key: `transform:"a,b"` is the key `a,b`, not a chain.
@@ -60,8 +62,9 @@ else returns `ErrInvalidSrc`. Code already holding a `reflect.Value` can call
   nothing. `WithStrict()` reports `ErrUnknownKey` and `ErrUnusableKey` (e.g. a
   string function on an `int`) once per type, at plan build time.
 - **Traversal.** Untagged nested values are still walked. Only exported fields
-  are transformed, map keys never are, and `[]byte` is not a string (use
-  `RegisterAny`).
+  are transformed, and map keys never are. A `[]byte` is not a string: it needs
+  a bytes transform. A `[16]byte` is not a byte slice either — its length is
+  part of its type, so it needs `RegisterAny`.
 - **Errors.** Stops at the first failure and returns a `*FieldError` with type,
   field, and key. No rollback.
 - **Cycles.** Depth is capped at `DefaultMaxDepth` (1000) and returns
@@ -83,6 +86,8 @@ parsing or registry lookups. Intel Core Ultra 7 265K, Go 1.23:
 | flat struct, first call | 1930 | 25 |
 | 20 fields, 8 transformed | 307 | 5 |
 | same, hand-written reflection | 1013 | 24 |
+| one `[]byte` field | 73 | 1 |
+| same, through `RegisterAny` | 143 | 3 |
 
 Fixed overhead is about 65ns per call versus hand-written code. For trivial
 transforms in a hot loop, write the loop.

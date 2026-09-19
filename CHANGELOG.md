@@ -6,6 +6,53 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-19
+
+First stable release. The API is what it has been since 0.3.1 plus the byte
+slice support below, and it is now covered by the compatibility promise that
+comes with a v1: no breaking change to an exported name without a v2.
+
+### Added
+
+- `RegisterBytes(key, func([]byte) []byte)` and
+  `RegisterBytesErr(key, func([]byte) ([]byte, error))` transform byte-slice
+  fields directly. They apply to `[]byte`, to named types whose underlying type
+  is a byte slice, to `*[]byte`, and — like string transforms on containers of
+  strings — to containers that bottom out in byte slices: `[][]byte`,
+  `map[K][]byte`, `[N][]byte`, `map[K]*[]byte`, and any nesting of those. A
+  transform tagged on an `any` field also fires when the concrete value turns
+  out to be a byte slice.
+
+  Reaching such a field previously meant `RegisterAny`, which boxes the slice
+  into an interface on every call and type-asserts it back, and whose result
+  has to be checked for assignability. On an Intel Ultra 7 265K with Go 1.23,
+  a struct with one tagged `[]byte` field: 143ns/3 allocs through `RegisterAny`
+  versus 73ns/1 alloc through `RegisterBytes` — the one remaining allocation
+  belongs to the transform itself.
+
+  A byte array (`[16]byte`) is deliberately not covered. Its length is part of
+  its type, so a function free to return a slice of any length has nowhere to
+  put the result; those fields still need `RegisterAny`. `WithStrict` reports
+  a bytes key on one, as on any other field it cannot act on, as
+  `ErrUnusableKey`.
+
+### Changed
+
+- A key is unique across all three registries, so registering the same key as
+  both a bytes and a string (or any) transform panics, as two string
+  registrations already did.
+- A `[]byte` field tagged with a `RegisterAny` key no longer walks its
+  elements after applying the transform. The walk could never find anything to
+  do in a slice of bytes; the result is unchanged and the field is cheaper.
+- Each registry is allocated by the first registration of its kind rather than
+  by `New`, so a third kind of transform costs nothing to the callers that do
+  not use it — `New` now allocates fewer maps than it did before this release,
+  not more.
+- A `Register*` call on a zero-value `Transformer` panics with
+  "Transformer must be created with New". It panicked before too, but with a
+  nil-map assignment from inside the package, which said nothing about the
+  cause.
+
 ## [0.3.1] - 2026-09-13
 
 No library code changes.
@@ -132,7 +179,8 @@ No library code changes.
 - Initial release: tag-driven in-place struct field transformation with a
   cached per-type execution plan and a dynamic function registry.
 
-[Unreleased]: https://github.com/goxang/transform/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/goxang/transform/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/goxang/transform/compare/v0.3.1...v1.0.0
 [0.3.1]: https://github.com/goxang/transform/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/goxang/transform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/goxang/transform/compare/v0.1.0...v0.2.0

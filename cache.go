@@ -11,6 +11,8 @@ const (
 	funcNone      funcKind = iota
 	funcString             // func(string) string
 	funcStringErr          // func(string) (string, error)
+	funcBytes              // func([]byte) []byte
+	funcBytesErr           // func([]byte) ([]byte, error)
 	funcAny                // func(any) (any, error)
 )
 
@@ -22,6 +24,9 @@ const (
 	kindStringDirect                     // string with func(string)string
 	kindStringErrDirect                  // string with func(string)(string,error)
 	kindStringContainer                  // slice/array/map bottoming out in strings
+	kindBytesDirect                      // byte slice with func([]byte)[]byte
+	kindBytesErrDirect                   // byte slice with func([]byte)([]byte,error)
+	kindBytesContainer                   // slice/array/map bottoming out in byte slices
 	kindAnyDirect                        // any field with func(any)(any,error)
 	kindAnyInterface                     // interface field with func(any)(any,error)
 	kindStruct                           // recurse into nested value struct
@@ -49,9 +54,11 @@ type fieldPlan struct {
 	key   string    // transformation key (for error messages)
 
 	// Instance-specific transform functions
-	strFn  func(string) string
-	strErr func(string) (string, error)
-	anyFn  func(any) (any, error)
+	strFn    func(string) string
+	strErr   func(string) (string, error)
+	bytesFn  func([]byte) []byte
+	bytesErr func([]byte) ([]byte, error)
+	anyFn    func(any) (any, error)
 
 	nested *typeInfo // nested typeInfo (struct/slice/map elements)
 	err    error     // strict-mode tag diagnosis, reported on every call
@@ -67,19 +74,20 @@ type fieldPlan struct {
 // already present in graph that is requested again marks a cycle, which is
 // resolved after the graph is complete — see finalize.
 //
-// reg and anyReg are the Transformer's registry maps (references, not
-// copies), captured under the read lock when the builder is created. The
+// reg, bytesReg and anyReg are the Transformer's registry maps (references,
+// not copies), captured under the read lock when the builder is created. The
 // lock orders the capture after any in-flight Register write. Writes cannot
 // happen after the capture either: Transform sets the frozen flag before
 // any plan build begins, and Register panics once frozen, so the builder
 // may read the maps without holding the lock. Every plan in the graph
 // therefore sees the same set of functions.
 type builder struct {
-	t      *Transformer
-	reg    map[string]stringTransform
-	anyReg map[string]anyTransform
-	graph  map[reflect.Type]*typeInfo
-	cyclic bool
+	t        *Transformer
+	reg      map[string]stringTransform
+	bytesReg map[string]bytesTransform
+	anyReg   map[string]anyTransform
+	graph    map[reflect.Type]*typeInfo
+	cyclic   bool
 }
 
 // lookupKey returns the transform key and function kind for a struct field.
@@ -102,6 +110,12 @@ func (b *builder) classifyFunc(key string) funcKind {
 		}
 		return funcStringErr
 	}
+	if bytesFn, ok := b.bytesReg[key]; ok {
+		if bytesFn.fn != nil {
+			return funcBytes
+		}
+		return funcBytesErr
+	}
 	if _, ok := b.anyReg[key]; ok {
 		return funcAny
 	}
@@ -116,9 +130,9 @@ func (t *Transformer) getTypeInfo(rt reflect.Type) *typeInfo {
 		return cached.(*typeInfo)
 	}
 	t.mu.RLock()
-	reg, anyReg := t.registry, t.anyRegistry
+	reg, bytesReg, anyReg := t.registry, t.bytesRegistry, t.anyRegistry
 	t.mu.RUnlock()
-	b := &builder{t: t, reg: reg, anyReg: anyReg, graph: make(map[reflect.Type]*typeInfo)}
+	b := &builder{t: t, reg: reg, bytesReg: bytesReg, anyReg: anyReg, graph: make(map[reflect.Type]*typeInfo)}
 	b.build(rt)
 	b.finalize()
 	// finalize publishes with LoadOrStore, so a plan another goroutine built
@@ -217,7 +231,9 @@ func recomputeHas(info *typeInfo) bool {
 // fixed point use it, so the two can never drift apart.
 func fieldDoesWork(fp *fieldPlan) bool {
 	switch fp.kind {
-	case kindStringDirect, kindStringErrDirect, kindStringContainer, kindInterface, kindStrictErr:
+	case kindStringDirect, kindStringErrDirect, kindStringContainer,
+		kindBytesDirect, kindBytesErrDirect, kindBytesContainer,
+		kindInterface, kindStrictErr:
 		return true
 	}
 	if fp.anyFn != nil {
@@ -277,11 +293,12 @@ func strictDiagnosis(fp *fieldPlan, fk funcKind) error {
 		return ErrUnknownKey
 	}
 	// A registered key that reached a field it cannot act on: a string
-	// function on a compound or scalar field. Traversal still happens, but
-	// the key itself does nothing, which is what strict mode is there to
-	// catch.
+	// function on a compound or scalar field, a bytes function on anything
+	// that is not a byte slice. Traversal still happens, but the key itself
+	// does nothing, which is what strict mode is there to catch.
 	switch fp.kind {
 	case kindStringDirect, kindStringErrDirect, kindStringContainer,
+		kindBytesDirect, kindBytesErrDirect, kindBytesContainer,
 		kindAnyDirect, kindAnyInterface, kindInterface:
 		return nil
 	}
@@ -322,6 +339,34 @@ func hasStringLeaf(rt reflect.Type) bool {
 	return false
 }
 
+// isByteSlice reports whether rt is a slice of bytes: []byte itself, or any
+// named type whose underlying type is one. A byte array is deliberately not
+// one — its length is part of its type, so a func([]byte) []byte free to
+// return a slice of any length has nowhere to put the result.
+func isByteSlice(rt reflect.Type) bool {
+	return rt.Kind() == reflect.Slice && rt.Elem().Kind() == reflect.Uint8
+}
+
+// hasBytesLeaf reports whether unwrapping pointers and container element types
+// from rt bottoms out in a byte slice — `[][]byte`, `map[K][]byte`,
+// `[N]*[]byte`, and so on. Checked only after rt itself has been ruled out as
+// a byte slice, so the innermost `[]byte` is the leaf rather than another
+// container to descend into.
+func hasBytesLeaf(rt reflect.Type) bool {
+	for i := 0; i < maxTypeUnwrap; i++ {
+		if isByteSlice(rt) {
+			return true
+		}
+		switch rt.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+			rt = rt.Elem()
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 func (b *builder) classifyField(ft reflect.Type, fp *fieldPlan, fk funcKind) {
 	baseType := derefType(ft)
 
@@ -336,10 +381,38 @@ func (b *builder) classifyField(ft reflect.Type, fp *fieldPlan, fk funcKind) {
 		case funcStringErr:
 			fp.kind = kindInterface
 			fp.strErr = b.reg[fp.key].fnErr
+		case funcBytes:
+			fp.kind = kindInterface
+			fp.bytesFn = b.bytesReg[fp.key].fn
+		case funcBytesErr:
+			fp.kind = kindInterface
+			fp.bytesErr = b.bytesReg[fp.key].fnErr
 		default:
 			fp.kind = kindInterface
 		}
 		return
+	}
+
+	// Checked before the container rules below: a byte slice is a slice, and
+	// the transform applies to the whole slice rather than to its elements.
+	if isByteSlice(baseType) {
+		switch fk {
+		case funcBytes:
+			fp.kind = kindBytesDirect
+			fp.bytesFn = b.bytesReg[fp.key].fn
+			return
+		case funcBytesErr:
+			fp.kind = kindBytesErrDirect
+			fp.bytesErr = b.bytesReg[fp.key].fnErr
+			return
+		case funcAny:
+			fp.kind = kindAnyDirect
+			fp.anyFn = b.anyReg[fp.key].fn
+			return
+		default:
+			fp.kind = kindSkip
+			return
+		}
 	}
 
 	if baseType.Kind() == reflect.String {
@@ -368,6 +441,17 @@ func (b *builder) classifyField(ft reflect.Type, fp *fieldPlan, fk funcKind) {
 			fp.kind = kindStringContainer
 			fp.strFn = b.reg[fp.key].fn
 			fp.strErr = b.reg[fp.key].fnErr
+			return
+		}
+	}
+
+	// The same for a bytes transform on a container of byte slices.
+	if (fk == funcBytes || fk == funcBytesErr) && hasBytesLeaf(baseType) {
+		switch baseType.Kind() {
+		case reflect.Slice, reflect.Array, reflect.Map:
+			fp.kind = kindBytesContainer
+			fp.bytesFn = b.bytesReg[fp.key].fn
+			fp.bytesErr = b.bytesReg[fp.key].fnErr
 			return
 		}
 	}

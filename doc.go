@@ -29,6 +29,19 @@
 // map[K]string, [N]string, and any nesting of those) is applied to every
 // element.
 //
+// # Byte slices
+//
+// Not every field is text. [Transformer.RegisterBytes] and
+// [Transformer.RegisterBytesErr] register a func([]byte) []byte for fields
+// that hold bytes — a hash, a ciphertext, a protocol frame — and are applied
+// to []byte fields, to named types whose underlying type is a byte slice, and
+// to containers of those ([][]byte, map[K][]byte, ...) the same way string
+// transforms are applied to containers of strings.
+//
+// A byte array such as [16]byte is not a byte slice: its length is part of its
+// type, so a function free to return a slice of any length has nowhere to put
+// the result. Those fields need [Transformer.RegisterAny].
+//
 // # Lifecycle
 //
 // A Transformer is configured once and then read-only. The first Transform

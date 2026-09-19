@@ -1,6 +1,7 @@
 package transform_test
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -97,6 +98,68 @@ func FuzzTransformNested(f *testing.F) {
 		}
 		if v.Arr[0].Name != strings.ToUpper(c) || v.Arr[1].Count != n*2 {
 			t.Errorf("Arr: got %q %d %q %d", v.Arr[0].Name, v.Arr[0].Count, v.Arr[1].Name, v.Arr[1].Count)
+		}
+	})
+}
+
+// FuzzTransformBytesContainers is the byte-slice counterpart: a bytes
+// transform tagged on a byte slice and on containers of them must reach every
+// slice, including the ones a transform returns at a different length, and
+// leave keys and shapes untouched.
+func FuzzTransformBytesContainers(f *testing.F) {
+	f.Add([]byte("alpha"), []byte("beta"), "key")
+	f.Add([]byte{}, []byte(nil), "")
+	f.Add([]byte{0x00, 0xff}, []byte("ß"), "\x00")
+
+	f.Fuzz(func(t *testing.T, a, b []byte, k string) {
+		tx := transform.New()
+		tx.RegisterBytes("upperb", bytes.ToUpper)
+		tx.RegisterBytes("trim", bytes.TrimSpace)
+
+		type obj struct {
+			Payload []byte              `transform:"upperb"`
+			Trimmed []byte              `transform:"trim"`
+			List    [][]byte            `transform:"upperb"`
+			Arr     [2][]byte           `transform:"upperb"`
+			Dict    map[string][]byte   `transform:"upperb"`
+			Multi   map[string][][]byte `transform:"upperb"`
+			Held    any                 `transform:"upperb"`
+		}
+		v := obj{
+			Payload: a,
+			Trimmed: b,
+			List:    [][]byte{a, b},
+			Arr:     [2][]byte{a, b},
+			Dict:    map[string][]byte{k: a},
+			Multi:   map[string][][]byte{k: {b}},
+			Held:    a,
+		}
+		if err := tx.Transform(&v); err != nil {
+			t.Fatalf("Transform failed: %v", err)
+		}
+
+		wantA, wantB := bytes.ToUpper(a), bytes.ToUpper(b)
+		if !bytes.Equal(v.Payload, wantA) {
+			t.Errorf("Payload: got %q, want %q", v.Payload, wantA)
+		}
+		if !bytes.Equal(v.Trimmed, bytes.TrimSpace(b)) {
+			t.Errorf("Trimmed: got %q", v.Trimmed)
+		}
+		if !bytes.Equal(v.List[0], wantA) || !bytes.Equal(v.List[1], wantB) {
+			t.Errorf("List: got %q %q", v.List[0], v.List[1])
+		}
+		if !bytes.Equal(v.Arr[0], wantA) || !bytes.Equal(v.Arr[1], wantB) {
+			t.Errorf("Arr: got %q %q", v.Arr[0], v.Arr[1])
+		}
+		if got, ok := v.Dict[k]; !ok || !bytes.Equal(got, wantA) {
+			t.Errorf("Dict[%q]: got %q ok=%v — keys must be preserved verbatim", k, got, ok)
+		}
+		if !bytes.Equal(v.Multi[k][0], wantB) {
+			t.Errorf("Multi: got %q", v.Multi[k])
+		}
+		held, ok := v.Held.([]byte)
+		if !ok || !bytes.Equal(held, wantA) {
+			t.Errorf("Held: got %v, want %q", v.Held, wantA)
 		}
 	})
 }

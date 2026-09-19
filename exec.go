@@ -100,6 +100,53 @@ func (t *Transformer) compileField(fp *fieldPlan) func(reflect.Value, int) error
 			return applyStringDeep(f, fn, fnErr)
 		}
 
+	case kindBytesDirect:
+		fn := fp.bytesFn
+		if fn == nil {
+			return nil
+		}
+		return func(parent reflect.Value, _ int) error {
+			f, ok := derefField(parent, index)
+			if ok && f.CanSet() {
+				f.SetBytes(fn(f.Bytes()))
+			}
+			return nil
+		}
+
+	case kindBytesErrDirect:
+		fn := fp.bytesErr
+		if fn == nil {
+			return nil
+		}
+		return func(parent reflect.Value, _ int) error {
+			f, ok := derefField(parent, index)
+			if !ok || !f.CanSet() {
+				return nil
+			}
+			result, err := fn(f.Bytes())
+			if err != nil {
+				return err
+			}
+			f.SetBytes(result)
+			return nil
+		}
+
+	case kindBytesContainer:
+		fn, fnErr := fp.bytesFn, fp.bytesErr
+		if fn == nil && fnErr == nil {
+			return nil
+		}
+		// No depth argument, for the same reason as kindStringContainer: the
+		// element types were resolved at plan time and bottom out in byte
+		// slices, so the walk is finite by construction.
+		return func(parent reflect.Value, _ int) error {
+			f, ok := derefField(parent, index)
+			if !ok || !f.CanSet() {
+				return nil
+			}
+			return applyBytesDeep(f, fn, fnErr)
+		}
+
 	case kindAnyDirect:
 		fn := fp.anyFn
 		if fn == nil {
@@ -196,6 +243,7 @@ func (t *Transformer) compileField(fp *fieldPlan) func(reflect.Value, int) error
 
 	case kindInterface:
 		strFn, strErr := fp.strFn, fp.strErr
+		bytesFn, bytesErr := fp.bytesFn, fp.bytesErr
 		return func(parent reflect.Value, depth int) error {
 			f, ok := derefField(parent, index)
 			if !ok || !f.CanSet() || f.IsNil() {
@@ -210,6 +258,19 @@ func (t *Transformer) compileField(fp *fieldPlan) func(reflect.Value, int) error
 						return assignAny(strFn(inner.String()), f)
 					}
 					result, err := strErr(inner.String())
+					if err != nil {
+						return err
+					}
+					return assignAny(result, f)
+				}
+			}
+			// Likewise for a bytes transform and a concrete byte slice.
+			if bytesFn != nil || bytesErr != nil {
+				if inner := f.Elem(); inner.IsValid() && isByteSlice(inner.Type()) {
+					if bytesFn != nil {
+						return assignAny(bytesFn(inner.Bytes()), f)
+					}
+					result, err := bytesErr(inner.Bytes())
 					if err != nil {
 						return err
 					}
@@ -276,6 +337,64 @@ func applyStringDeep(v reflect.Value, fn func(string) string, fnErr func(string)
 		for iter.Next() {
 			tmp.SetIterValue(iter)
 			if err := applyStringDeep(tmp, fn, fnErr); err != nil {
+				return err
+			}
+			key.SetIterKey(iter)
+			v.SetMapIndex(key, tmp)
+		}
+		return nil
+	}
+	return nil
+}
+
+// applyBytesDeep applies a bytes transform to every byte slice reached from v
+// by walking pointers and container elements. It backs kindBytesContainer,
+// whose element types are known at plan time to bottom out in byte slices, so
+// the recursion is bounded by the type's shape and cannot run away.
+func applyBytesDeep(v reflect.Value, fn func([]byte) []byte, fnErr func([]byte) ([]byte, error)) error {
+	for v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+
+	// Checked before the container cases: a byte slice is a slice, and it is
+	// the leaf rather than something to iterate over.
+	if isByteSlice(v.Type()) {
+		if !v.CanSet() {
+			return nil
+		}
+		if fn != nil {
+			v.SetBytes(fn(v.Bytes()))
+			return nil
+		}
+		b, err := fnErr(v.Bytes())
+		if err != nil {
+			return err
+		}
+		v.SetBytes(b)
+		return nil
+	}
+
+	switch v.Kind() {
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			if err := applyBytesDeep(v.Index(i), fn, fnErr); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case reflect.Map:
+		// Map values are never addressable, so each one is copied into a
+		// reusable buffer, transformed, and written back.
+		tmp := reflect.New(v.Type().Elem()).Elem()
+		key := reflect.New(v.Type().Key()).Elem()
+		iter := v.MapRange()
+		for iter.Next() {
+			tmp.SetIterValue(iter)
+			if err := applyBytesDeep(tmp, fn, fnErr); err != nil {
 				return err
 			}
 			key.SetIterKey(iter)

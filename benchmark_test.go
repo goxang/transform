@@ -1,6 +1,7 @@
 package transform_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -721,5 +722,58 @@ func BenchmarkTransformValue_NoTransform(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = tx.TransformValue(rv)
+	}
+}
+
+// ========== Byte slices ==========
+//
+// A byte-slice field can be reached either by a registered func([]byte) []byte
+// or by RegisterAny, which boxes the slice into an interface on every call and
+// type-asserts it back. This pair measures that difference, which is the whole
+// reason the bytes registry exists.
+
+type benchBytes struct {
+	Payload []byte `transform:"upperb"`
+	Tag     []byte
+}
+
+func BenchmarkTransform_Bytes(b *testing.B) {
+	tx := transform.New()
+	tx.RegisterBytes("upperb", bytes.ToUpper)
+	v := benchBytes{Payload: []byte("alice@example.com"), Tag: []byte("tag")}
+	_ = tx.Transform(&v)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tx.Transform(&v)
+	}
+}
+
+func BenchmarkBaseline_BytesViaAny(b *testing.B) {
+	tx := transform.New()
+	tx.RegisterAny("upperb", func(v any) (any, error) { return bytes.ToUpper(v.([]byte)), nil })
+	v := benchBytes{Payload: []byte("alice@example.com"), Tag: []byte("tag")}
+	_ = tx.Transform(&v)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tx.Transform(&v)
+	}
+}
+
+func BenchmarkTransform_BytesSlice10(b *testing.B) {
+	tx := transform.New()
+	tx.RegisterBytes("upperb", bytes.ToUpper)
+	var v struct {
+		Frames [][]byte `transform:"upperb"`
+	}
+	for i := 0; i < 10; i++ {
+		v.Frames = append(v.Frames, []byte("alice@example.com"))
+	}
+	_ = tx.Transform(&v)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = tx.Transform(&v)
 	}
 }

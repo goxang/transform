@@ -10,23 +10,24 @@ import (
 // functions.
 //
 // A Transformer must be created with New; the zero value is not usable:
-// Transform is a no-op and the Register methods panic on nil registries.
+// Transform is a no-op and the Register methods panic.
 //
 // It is safe for concurrent use after all functions have been registered.
 // Registering concurrently with a running Transform is serialized against
 // the freeze check, but a Register call that loses the race with the first
 // Transform panics.
 type Transformer struct {
-	tag         string
-	strict      bool
-	maxDepth    int
-	registry    map[string]stringTransform
-	anyRegistry map[string]anyTransform
+	tag           string
+	strict        bool
+	maxDepth      int
+	registry      map[string]stringTransform
+	bytesRegistry map[string]bytesTransform
+	anyRegistry   map[string]anyTransform
 
-	// mu guards registry and anyRegistry. Registration takes the write
-	// lock; plan building snapshots both maps under the read lock, so a
-	// plan is always compiled against one consistent set of functions and
-	// never races with a concurrent registration.
+	// mu guards the registries. Registration takes the write lock; plan
+	// building snapshots the maps under the read lock, so a plan is always
+	// compiled against one consistent set of functions and never races with
+	// a concurrent registration.
 	mu     sync.RWMutex
 	cache  sync.Map // reflect.Type → *typeInfo
 	frozen atomic.Bool
@@ -34,11 +35,11 @@ type Transformer struct {
 
 // New creates a new Transformer with the given options.
 func New(opts ...Option) *Transformer {
+	// The registries are allocated by the first registration of their kind, so
+	// a Transformer pays for the kinds it actually uses and no more.
 	t := &Transformer{
-		tag:         "transform",
-		maxDepth:    DefaultMaxDepth,
-		registry:    make(map[string]stringTransform),
-		anyRegistry: make(map[string]anyTransform),
+		tag:      "transform",
+		maxDepth: DefaultMaxDepth,
 	}
 	for _, o := range opts {
 		if o != nil {
@@ -136,6 +137,11 @@ func validateTransformSrc(val reflect.Value) error {
 type stringTransform struct {
 	fn    func(string) string
 	fnErr func(string) (string, error)
+}
+
+type bytesTransform struct {
+	fn    func([]byte) []byte
+	fnErr func([]byte) ([]byte, error)
 }
 
 type anyTransform struct {
